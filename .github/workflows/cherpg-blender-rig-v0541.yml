@@ -1,0 +1,54 @@
+name: CheRPG Pawn v0.5.4.1 Rig Correction
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/rig_v0541.py'
+      - '.github/workflows/cherpg-blender-rig-v0541.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Ensure Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Rebuild clean v0.5.3 base
+        shell: bash
+        run: |
+          rm -rf cherpg_pipeline/fix053 cherpg_pipeline/fix0541
+          mkdir -p cherpg_pipeline/fix053 cherpg_pipeline/fix0541
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/fix053
+      - name: Build corrected v0.5.4.1
+        shell: bash
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/fix053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/rig_v0541.py --             cherpg_pipeline/fix053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/fix0541
+          test -s cherpg_pipeline/fix0541/cherpg-pawn-protagonist-rigged-v0.5.4.1.glb
+          test -s cherpg_pipeline/fix0541/cherpg-pawn-protagonist-rigged-v0.5.4.1.blend
+          cat cherpg_pipeline/fix0541/cherpg-pawn-protagonist-v0.5.4.1-rig-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.4.1-rig-corrected
+          path: cherpg_pipeline/fix0541/*
+          if-no-files-found: error
+          retention-days: 30

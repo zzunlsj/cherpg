@@ -1,0 +1,63 @@
+name: CheRPG Pawn v0.5.4.1 Six View Preview
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/render_multi_preview_v0541.py'
+      - '.github/workflows/cherpg-blender-multipreview-v0541.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Build v0.5.3
+        run: |
+          rm -rf cherpg_pipeline/p053a cherpg_pipeline/p0541a cherpg_pipeline/preview0541
+          mkdir -p cherpg_pipeline/p053a cherpg_pipeline/p0541a cherpg_pipeline/preview0541
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/p053a
+      - name: Build v0.5.4.1
+        run: |
+          "$BLENDER_BIN" --background cherpg_pipeline/p053a/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend --python cherpg_pipeline/rig_v0541.py -- cherpg_pipeline/p053a/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/p0541a
+      - name: Render corrected six views
+        run: |
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background cherpg_pipeline/p0541a/cherpg-pawn-protagonist-rigged-v0.5.4.1.blend --python cherpg_pipeline/render_multi_preview_v0541.py -- cherpg_pipeline/p0541a/cherpg-pawn-protagonist-rigged-v0.5.4.1.blend cherpg_pipeline/preview0541
+          test "$(find cherpg_pipeline/preview0541 -name '*.png' | wc -l)" -eq 6
+      - name: Commit corrected previews
+        run: |
+          mkdir -p cherpg_pipeline/renders_v0541
+          cp cherpg_pipeline/preview0541/*.png cherpg_pipeline/renders_v0541/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_v0541/*.png
+          git commit -m "Add corrected v0.5.4.1 six-view previews" || true
+          git push origin HEAD:cherpg-blender-pipeline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.4.1-six-view-preview
+          path: cherpg_pipeline/preview0541/*.png
+          retention-days: 30

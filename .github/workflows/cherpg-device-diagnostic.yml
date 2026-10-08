@@ -1,0 +1,36 @@
+name: CheRPG Device Diagnostic
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/diagnose_device.py'
+      - '.github/workflows/cherpg-device-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Ensure Blender
+        shell: bash
+        run: |
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Dump source device transforms
+        run: |
+          "$BLENDER_BIN" --background --python cherpg_pipeline/diagnose_device.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb

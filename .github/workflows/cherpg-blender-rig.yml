@@ -1,0 +1,94 @@
+name: CheRPG Pawn v0.5.4 Armature Build
+
+on:
+  push:
+    branches:
+      - cherpg-blender-pipeline
+    paths:
+      - 'cherpg_pipeline/rig_v054.py'
+      - '.github/workflows/cherpg-blender-rig.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rig:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb
+          test -f cherpg_pipeline/cleanup_v053.py
+          test -f cherpg_pipeline/rig_v054.py
+
+      - name: Restore Blender 5.2.2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Ensure Blender 5.2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 \
+              -o blender-5.2.2-linux-x64.tar.xz \
+              https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          "$BIN" --version
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Rebuild v0.5.3 Blender-ready base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cherpg_pipeline/build_v053 cherpg_pipeline/output_v054
+          mkdir -p cherpg_pipeline/build_v053 cherpg_pipeline/output_v054
+          "$BLENDER_BIN" --background \
+            --python cherpg_pipeline/cleanup_v053.py -- \
+            cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb \
+            cherpg_pipeline/build_v053
+
+      - name: Build v0.5.4 Armature
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$BLENDER_BIN" --background \
+            cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend \
+            --python cherpg_pipeline/rig_v054.py -- \
+            cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend \
+            cherpg_pipeline/output_v054
+
+      - name: Validate outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s cherpg_pipeline/output_v054/cherpg-pawn-protagonist-rigged-v0.5.4.glb
+          test -s cherpg_pipeline/output_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend
+          cat cherpg_pipeline/output_v054/cherpg-pawn-protagonist-v0.5.4-rig-report.json
+          ls -lh cherpg_pipeline/output_v054/
+
+      - name: Upload v0.5.4 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.4-rigged
+          path: |
+            cherpg_pipeline/output_v054/cherpg-pawn-protagonist-rigged-v0.5.4.glb
+            cherpg_pipeline/output_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend
+            cherpg_pipeline/output_v054/cherpg-pawn-protagonist-v0.5.4-rig-report.json
+          if-no-files-found: error
+          retention-days: 30

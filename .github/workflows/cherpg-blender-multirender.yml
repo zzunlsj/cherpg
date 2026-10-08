@@ -1,0 +1,72 @@
+name: CheRPG Pawn v0.5.4 Multi Angle Render
+
+on:
+  push:
+    branches:
+      - cherpg-blender-pipeline
+    paths:
+      - 'cherpg_pipeline/render_multi_v054.py'
+      - '.github/workflows/cherpg-blender-multirender.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Blender 5.2.2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Ensure Blender and headless libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Rebuild v0.5.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cherpg_pipeline/build_v053 cherpg_pipeline/build_v054 cherpg_pipeline/multirender
+          mkdir -p cherpg_pipeline/build_v053 cherpg_pipeline/build_v054 cherpg_pipeline/multirender
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/build_v053
+
+      - name: Rebuild v0.5.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$BLENDER_BIN" --background             cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/rig_v054.py --             cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/build_v054
+
+      - name: Render six directions
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background             cherpg_pipeline/build_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend             --python cherpg_pipeline/render_multi_v054.py --             cherpg_pipeline/build_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend cherpg_pipeline/multirender
+          test "$(find cherpg_pipeline/multirender -name '*.png' | wc -l)" -eq 6
+          ls -lh cherpg_pipeline/multirender
+
+      - name: Upload multi-angle renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.4-multi-angle-renders
+          path: cherpg_pipeline/multirender/*.png
+          if-no-files-found: error
+          retention-days: 30

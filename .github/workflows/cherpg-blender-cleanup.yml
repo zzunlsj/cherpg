@@ -1,0 +1,83 @@
+name: CheRPG Pawn v0.5.3 Blender Cleanup
+
+on:
+  push:
+    branches:
+      - cherpg-blender-pipeline
+    paths:
+      - 'cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb'
+      - 'cherpg_pipeline/cleanup_v053.py'
+      - '.github/workflows/cherpg-blender-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Verify source GLB
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE='cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb'
+          test -f "$SOURCE"
+          test "$(stat -c%s "$SOURCE")" -gt 4000000
+          ls -lh cherpg_pipeline/
+
+      - name: Cache Blender 5.2.2
+        id: cache-blender
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Install Blender 5.2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          mkdir -p "$ROOT"
+          if [ ! -x "$BIN" ]; then
+            cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 \
+              -o blender-5.2.2-linux-x64.tar.xz \
+              https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          "$BIN" --version
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Run v0.5.3 cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cherpg_pipeline/output
+          "$BLENDER_BIN" --background \
+            --python cherpg_pipeline/cleanup_v053.py -- \
+            cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb \
+            cherpg_pipeline/output
+
+      - name: Show report
+        shell: bash
+        run: |
+          cat cherpg_pipeline/output/cherpg-pawn-protagonist-v0.5.3-cleanup-report.json
+          ls -lh cherpg_pipeline/output
+
+      - name: Upload v0.5.3 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.3-blender-ready
+          path: |
+            cherpg_pipeline/output/cherpg-pawn-protagonist-blender-ready-v0.5.3.glb
+            cherpg_pipeline/output/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend
+            cherpg_pipeline/output/cherpg-pawn-protagonist-v0.5.3-cleanup-report.json
+          if-no-files-found: error
+          retention-days: 30

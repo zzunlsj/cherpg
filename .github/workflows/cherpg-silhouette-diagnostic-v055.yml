@@ -1,0 +1,45 @@
+name: CheRPG v0.5.5 Silhouette Diagnostic
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/diagnose_silhouette_v055.py'
+      - '.github/workflows/cherpg-silhouette-diagnostic-v055.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Build v0.5.3 base
+        run: |
+          rm -rf cherpg_pipeline/d053 cherpg_pipeline/d0541
+          mkdir -p cherpg_pipeline/d053 cherpg_pipeline/d0541
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/d053
+      - name: Build v0.5.4.1
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/d053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/rig_v0541.py --             cherpg_pipeline/d053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/d0541
+      - name: Dump silhouette metrics
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/d0541/cherpg-pawn-protagonist-rigged-v0.5.4.1.blend             --python cherpg_pipeline/diagnose_silhouette_v055.py --             cherpg_pipeline/d0541/cherpg-pawn-protagonist-rigged-v0.5.4.1.blend

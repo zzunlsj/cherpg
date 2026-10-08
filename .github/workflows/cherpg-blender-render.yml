@@ -1,0 +1,88 @@
+name: CheRPG Pawn v0.5.4 Render
+
+on:
+  push:
+    branches:
+      - cherpg-blender-pipeline
+    paths:
+      - 'cherpg_pipeline/render_v054.py'
+      - '.github/workflows/cherpg-blender-render.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Blender 5.2.2
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Ensure Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Install headless render libraries
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 \
+            libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+
+      - name: Rebuild v0.5.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cherpg_pipeline/build_v053 cherpg_pipeline/build_v054 cherpg_pipeline/render
+          mkdir -p cherpg_pipeline/build_v053 cherpg_pipeline/build_v054 cherpg_pipeline/render
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb             cherpg_pipeline/build_v053
+
+      - name: Rebuild v0.5.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$BLENDER_BIN" --background             cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/rig_v054.py --             cherpg_pipeline/build_v053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             cherpg_pipeline/build_v054
+
+      - name: Render v0.5.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$BLENDER_BIN" --background             cherpg_pipeline/build_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend             --python cherpg_pipeline/render_v054.py --             cherpg_pipeline/build_v054/cherpg-pawn-protagonist-rigged-v0.5.4.blend             cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          test -s cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          ls -lh cherpg_pipeline/render/
+
+      - name: Save preview PNG to branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          git commit -m "Add v0.5.4 rendered preview" || true
+          git push origin HEAD:cherpg-blender-pipeline
+
+      - name: Upload render
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.4-render
+          path: cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          if-no-files-found: error
+          retention-days: 30

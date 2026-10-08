@@ -1,0 +1,70 @@
+name: CheRPG Pawn v0.5.5 Silhouette Pass
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/silhouette_v055.py'
+      - 'cherpg_pipeline/rig_v055.py'
+      - 'cherpg_pipeline/render_actual_v055.py'
+      - '.github/workflows/cherpg-v055.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"; BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Build clean v0.5.3
+        run: |
+          rm -rf cherpg_pipeline/v055_base cherpg_pipeline/v055_shape cherpg_pipeline/v055_out cherpg_pipeline/v055_render
+          mkdir -p cherpg_pipeline/v055_base cherpg_pipeline/v055_shape cherpg_pipeline/v055_out cherpg_pipeline/v055_render
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/v055_base
+      - name: Apply v0.5.5 silhouette correction
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/v055_base/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/silhouette_v055.py --             cherpg_pipeline/v055_base/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             cherpg_pipeline/v055_shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend
+      - name: Rig v0.5.5
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/v055_shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend             --python cherpg_pipeline/rig_v055.py --             cherpg_pipeline/v055_shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend cherpg_pipeline/v055_out
+      - name: Render actual v0.5.5 PBR
+        run: |
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background             cherpg_pipeline/v055_out/cherpg-pawn-protagonist-rigged-v0.5.5.blend             --python cherpg_pipeline/render_actual_v055.py --             cherpg_pipeline/v055_out/cherpg-pawn-protagonist-rigged-v0.5.5.blend             cherpg_pipeline/v055_render/cherpg-pawn-v0.5.5-actual-pbr-3q.png
+          test -s cherpg_pipeline/v055_render/cherpg-pawn-v0.5.5-actual-pbr-3q.png
+      - name: Commit render
+        run: |
+          mkdir -p cherpg_pipeline/renders_actual_v055
+          cp cherpg_pipeline/v055_render/*.png cherpg_pipeline/renders_actual_v055/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_actual_v055/*.png
+          git commit -m "Add actual v0.5.5 PBR render" || true
+          git push origin HEAD:cherpg-blender-pipeline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.5-silhouette-corrected
+          path: |
+            cherpg_pipeline/v055_out/*
+            cherpg_pipeline/v055_shape/*.json
+            cherpg_pipeline/v055_render/*.png
+          retention-days: 30
