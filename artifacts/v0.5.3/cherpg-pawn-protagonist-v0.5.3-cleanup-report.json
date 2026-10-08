@@ -1,0 +1,119 @@
+{
+  "version": "0.5.3",
+  "stage": "Blender-ready cleanup",
+  "blender_version": "5.2.2 LTS",
+  "input_file": "cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb",
+  "output_glb": "cherpg-pawn-protagonist-blender-ready-v0.5.3.glb",
+  "output_blend": "cherpg-pawn-protagonist-blender-ready-v0.5.3.blend",
+  "before": {
+    "mesh_objects": 165,
+    "vertices": 46620,
+    "tri_or_poly_faces": 92582,
+    "materials": 10,
+    "material_names": [
+      "Aged_Brass_PBR",
+      "Amber_Eye",
+      "Black_Iron_PBR",
+      "Dark_Cloth_PBR",
+      "Dense_Stone_PBR",
+      "Dusty_Blue_Cloth_PBR",
+      "Leather_PBR",
+      "Light_Cloth_PBR",
+      "Living_Marble_PBR",
+      "Repair_Gold"
+    ],
+    "nan_or_inf_vertices": 0,
+    "degenerate_faces": 0,
+    "non_manifold_internal_edges": 0,
+    "loose_edges": 0,
+    "exact_duplicate_vertex_positions_report_only": 0
+  },
+  "after": {
+    "mesh_objects": 165,
+    "vertices": 46900,
+    "tri_or_poly_faces": 93140,
+    "materials": 10,
+    "material_names": [
+      "Aged_Brass_PBR",
+      "Amber_Eye",
+      "Black_Iron_PBR",
+      "Dark_Cloth_PBR",
+      "Dense_Stone_PBR",
+      "Dusty_Blue_Cloth_PBR",
+      "Leather_PBR",
+      "Light_Cloth_PBR",
+      "Living_Marble_PBR",
+      "Repair_Gold"
+    ],
+    "nan_or_inf_vertices": 0,
+    "degenerate_faces": 0,
+    "non_manifold_internal_edges": 0,
+    "loose_edges": 0,
+    "exact_duplicate_vertex_positions_report_only": 0
+  },
+  "world_bounds": {
+    "min": [
+      -0.34163495898246765,
+      -0.3070000112056732,
+      0.11501414328813553
+    ],
+    "max": [
+      0.34090691804885864,
+      0.20999999344348907,
+      1.7171164751052856
+    ],
+    "size_m": [
+      0.6825418770313263,
+      0.5170000046491623,
+      1.6021023318171501
+    ]
+  },
+  "normal_recalculated_objects": 165,
+  "cape_solidify": {
+    "before": {
+      "vertices": 280,
+      "faces": 494
+    },
+    "after": {
+      "vertices": 560,
+      "faces": 1052
+    },
+    "thickness_m": 0.005
+  },
+  "logical_group_counts": {
+    "HEAD": 18,
+    "HELMET": 5,
+    "CHEST": 21,
+    "PELVIS": 11,
+    "UPPER_ARM_L": 3,
+    "UPPER_ARM_R": 3,
+    "FOREARM_L": 3,
+    "FOREARM_R": 3,
+    "HAND_L": 10,
+    "HAND_R": 10,
+    "THIGH_L": 2,
+    "THIGH_R": 2,
+    "SHIN_L": 5,
+    "SHIN_R": 5,
+    "FOOT_L": 4,
+    "FOOT_R": 4,
+    "CAPE": 6,
+    "SCARF": 3,
+    "BACKPACK": 6,
+    "DEVICE": 11,
+    "OTHER": 30
+  },
+  "device_objects_parented_to_DEVICE_ROOT": [],
+  "non_destructive_rules": {
+    "merge_by_distance": false,
+    "decimate": false,
+    "destructive_mesh_join": false,
+    "materials_preserved": true,
+    "uvs_preserved": true
+  },
+  "canonical_direction_device": {
+    "body_rotation_when_heading_changes": false,
+    "anchor_motion": "vertical",
+    "movement_heading_independent_of_visual_facing": true
+  }
+}

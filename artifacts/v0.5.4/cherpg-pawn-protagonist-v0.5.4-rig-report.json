@@ -1,0 +1,111 @@
+{
+  "version": "0.5.4",
+  "blender_version": "5.2.2 LTS",
+  "armature_object": "RIG_PawnHero",
+  "bone_count": 23,
+  "bones": [
+    "Root",
+    "Pelvis",
+    "Spine1",
+    "Spine2",
+    "Chest",
+    "Neck",
+    "Head",
+    "Scarf",
+    "UpperArm_L",
+    "Forearm_L",
+    "Hand_L",
+    "UpperArm_R",
+    "Forearm_R",
+    "Hand_R",
+    "CapeUpper",
+    "CapeMid",
+    "CapeLower",
+    "Thigh_L",
+    "Shin_L",
+    "Foot_L",
+    "Thigh_R",
+    "Shin_R",
+    "Foot_R"
+  ],
+  "mesh_objects": 165,
+  "skinned_mesh_objects": 154,
+  "device_mesh_objects": 11,
+  "device_top_level_reparented": [
+    "DEVICE_InnerRing",
+    "DEVICE_DiamondCore",
+    "DEVICE_AnchorCassette",
+    "DEVICE_FoldedSegment_2",
+    "ARM_R_ElbowRing",
+    "DEVICE_OuterRing",
+    "ARM_L_ElbowRing",
+    "DEVICE_CoreDisk",
+    "DEVICE_FoldedSegment_0",
+    "DEVICE_FoldedSegment_1",
+    "DEVICE_FoldedSegment_3"
+  ],
+  "cloth": {
+    "cape": [
+      "CLOTH_Cape_Main",
+      "CLOTH_CapePatch_0",
+      "CLOTH_CapePatch_1",
+      "CLOTH_CapePatch_2",
+      "CLOTH_CapePatch_3",
+      "CLOTH_CapePatch_4"
+    ],
+    "scarf": [
+      "CLOTH_ScarfCollar",
+      "CLOTH_ScarfCollar2",
+      "CLOTH_ScarfTail"
+    ]
+  },
+  "nearest_assignment_count": 30,
+  "nearest_assignments": {
+    "CORE_Neck": "Chest",
+    "GEAR_Buckle_L": "Chest",
+    "GEAR_Buckle_R": "Chest",
+    "ARM_L_UpperStone": "UpperArm_L",
+    "ARM_R_UpperStone": "UpperArm_R",
+    "GEAR_MainBuckle": "Pelvis",
+    "DETAIL_GoldSeam_00": "Head",
+    "DETAIL_GoldSeam_01": "Head",
+    "DETAIL_GoldSeam_02": "Chest",
+    "DETAIL_GoldSeam_03": "Chest",
+    "DETAIL_GoldSeam_04": "UpperArm_L",
+    "DETAIL_GoldSeam_05": "UpperArm_R",
+    "DETAIL_GoldSeam_06": "Thigh_L",
+    "DETAIL_GoldSeam_07": "Thigh_R",
+    "DETAIL_GoldSeam_08": "Shin_L",
+    "DETAIL_GoldSeam_09": "Shin_R",
+    "DETAIL_Rivet_00": "Thigh_L",
+    "DETAIL_Rivet_01": "Thigh_R",
+    "DETAIL_Rivet_02": "Chest",
+    "DETAIL_Rivet_03": "Chest",
+    "DETAIL_Rivet_04": "Thigh_L",
+    "DETAIL_Rivet_05": "Thigh_R",
+    "DETAIL_StoneCrack_00": "Head",
+    "DETAIL_StoneCrack_01": "Head",
+    "DETAIL_StoneCrack_02": "Head",
+    "DETAIL_StoneCrack_03": "Head",
+    "DETAIL_StoneCrack_04": "Thigh_L",
+    "DETAIL_StoneCrack_05": "Thigh_L",
+    "DETAIL_StoneCrack_06": "Shin_R",
+    "DETAIL_StoneCrack_07": "Shin_R"
+  },
+  "validation_action": "RIG_VALIDATION",
+  "validation_frames": [
+    1,
+    15,
+    30
+  ],
+  "canonical_direction_device": {
+    "body_rotation_when_heading_changes": false,
+    "movement_heading_independent_of_visual_facing": true,
+    "device_root_attached_to": "Pelvis",
+    "anchor_motion": "vertical"
+  },
+  "outputs": {
+    "blend": "cherpg-pawn-protagonist-rigged-v0.5.4.blend",
+    "glb": "cherpg-pawn-protagonist-rigged-v0.5.4.glb"
+  }
+}

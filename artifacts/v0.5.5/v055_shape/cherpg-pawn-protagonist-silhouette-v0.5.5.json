@@ -1,0 +1,335 @@
+{
+  "version": "0.5.5",
+  "changes": {
+    "HELM_Brim": {
+      "scale": [
+        0.88,
+        0.88,
+        0.88
+      ]
+    },
+    "HELM_BrimTrim": {
+      "scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    "HELM_CrownBand": {
+      "scale": [
+        0.96,
+        0.96,
+        0.92
+      ]
+    },
+    "HELM_PawnSphere": {
+      "scale": [
+        0.96,
+        0.96,
+        0.96
+      ]
+    },
+    "HEAD_FaceShell": {
+      "scale": [
+        0.96,
+        1.055,
+        0.95
+      ],
+      "translate": [
+        0,
+        0,
+        0.004
+      ]
+    },
+    "HEAD_Eye_L": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Eye_R": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Lid_L": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Lid_R": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Brow_L": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Brow_R": {
+      "translate": [
+        0,
+        0.007,
+        0
+      ]
+    },
+    "HEAD_Nose": {
+      "scale": [
+        0.9,
+        0.88,
+        0.94
+      ],
+      "translate": [
+        0,
+        0.004,
+        -0.002
+      ]
+    },
+    "HEAD_JawPlate": {
+      "scale": [
+        0.94,
+        0.95,
+        0.9
+      ],
+      "translate": [
+        0,
+        0.005,
+        0.006
+      ]
+    },
+    "CLOTH_ScarfCollar": {
+      "scale": [
+        0.93,
+        0.93,
+        0.88
+      ]
+    },
+    "CLOTH_ScarfCollar2": {
+      "scale": [
+        0.91,
+        0.91,
+        0.88
+      ]
+    },
+    "CORE_Torso": {
+      "scale": [
+        1.08,
+        0.9,
+        0.98
+      ]
+    },
+    "TORSO_ChestPlate_L": {
+      "scale": [
+        1.035,
+        0.82,
+        0.95
+      ]
+    },
+    "TORSO_ChestPlate_R": {
+      "scale": [
+        1.035,
+        0.82,
+        0.95
+      ]
+    },
+    "TORSO_AbPlate_0": {
+      "scale": [
+        1.02,
+        0.82,
+        0.9
+      ]
+    },
+    "TORSO_AbPlate_1": {
+      "scale": [
+        1.02,
+        0.82,
+        0.9
+      ]
+    },
+    "TORSO_AbPlate_2": {
+      "scale": [
+        1.02,
+        0.82,
+        0.9
+      ]
+    },
+    "GEAR_Backpack": {
+      "scale": [
+        0.9,
+        0.76,
+        0.88
+      ],
+      "translate": [
+        0,
+        0.022,
+        0.015
+      ]
+    },
+    "GEAR_Bedroll": {
+      "group_scale": [
+        0.88,
+        0.84,
+        0.84
+      ],
+      "translate": [
+        0,
+        0.026,
+        0.008
+      ]
+    },
+    "GEAR_BedrollBand_L": {
+      "group_scale": [
+        0.88,
+        0.84,
+        0.84
+      ],
+      "translate": [
+        0,
+        0.026,
+        0.008
+      ]
+    },
+    "GEAR_BedrollBand_R": {
+      "group_scale": [
+        0.88,
+        0.84,
+        0.84
+      ],
+      "translate": [
+        0,
+        0.026,
+        0.008
+      ]
+    },
+    "LEG_L_AnkleCuff": {
+      "scale": [
+        0.82,
+        0.82,
+        0.66
+      ],
+      "translate": [
+        0,
+        0,
+        -0.01
+      ]
+    },
+    "LEG_L_BootUpper": {
+      "scale": [
+        0.94,
+        0.92,
+        0.7
+      ],
+      "translate": [
+        0,
+        0,
+        -0.008
+      ]
+    },
+    "LEG_L_BootBody": {
+      "scale": [
+        1.03,
+        1.0,
+        1.12
+      ],
+      "translate": [
+        0,
+        0,
+        0.002
+      ]
+    },
+    "LEG_R_AnkleCuff": {
+      "scale": [
+        0.82,
+        0.82,
+        0.66
+      ],
+      "translate": [
+        0,
+        0,
+        -0.01
+      ]
+    },
+    "LEG_R_BootUpper": {
+      "scale": [
+        0.94,
+        0.92,
+        0.7
+      ],
+      "translate": [
+        0,
+        0,
+        -0.008
+      ]
+    },
+    "LEG_R_BootBody": {
+      "scale": [
+        1.03,
+        1.0,
+        1.12
+      ],
+      "translate": [
+        0,
+        0,
+        0.002
+      ]
+    },
+    "DEVICE_OuterRing": {
+      "group_scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "translate": [
+        -0.012,
+        -0.004,
+        0.006
+      ]
+    },
+    "DEVICE_InnerRing": {
+      "group_scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "translate": [
+        -0.012,
+        -0.004,
+        0.006
+      ]
+    },
+    "DEVICE_CoreDisk": {
+      "group_scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "translate": [
+        -0.012,
+        -0.004,
+        0.006
+      ]
+    },
+    "DEVICE_DiamondCore": {
+      "group_scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "translate": [
+        -0.012,
+        -0.004,
+        0.006
+      ]
+    }
+  }
+}
