@@ -1,0 +1,45 @@
+name: CheRPG Migration Import Version Artifacts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cherpg-migration-import-artifacts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and unpack version artifacts
+        shell: bash
+        env:
+          URL_V053: 'https://sdmntprjapaneast.oaiusercontent.com/files/00000000-a44c-8209-9bc2-f02345b2aa9a/raw?se=2026-10-08T08%3A25%3A53Z&sp=r&sv=2026-02-06&sr=b&scid=676cd145-6ad5-5c99-a924-eed573280752&skoid=0765b554-4b90-4fa2-9d6d-0055a2427910&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T05%3A23%3A39Z&ske=2026-10-09T05%3A23%3A39Z&sks=b&skv=2026-02-06&sig=urv9nCG8Uy37shuD9BOj1o4f8LXifQc/PMNsYYBu3vA%3D'
+          URL_V054: 'https://sdmntprkoreacentral.oaiusercontent.com/files/00000000-5068-8206-a8e8-e48972138e01/raw?se=2026-10-08T08%3A26%3A00Z&sp=r&sv=2026-02-06&sr=b&scid=cfc3c7f8-b6f0-5f4a-a930-2ba00819c05c&skoid=0765b554-4b90-4fa2-9d6d-0055a2427910&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-07T21%3A39%3A20Z&ske=2026-10-08T21%3A39%3A20Z&sks=b&skv=2026-02-06&sig=UOpaEMLUChPXJNMOIL3f9ghaQ%2BPxkCCdNesiv30b9Us%3D'
+          URL_V0541: 'https://sdmntprindiasocentral.oaiusercontent.com/files/00000000-2af8-8211-b63d-1c2fb85f17a1/raw?se=2026-10-08T08%3A26%3A10Z&sp=r&sv=2026-02-06&sr=b&scid=fd6be4cc-15d0-5674-87fa-c0f7563f7d8c&skoid=0765b554-4b90-4fa2-9d6d-0055a2427910&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T00%3A21%3A39Z&ske=2026-10-09T00%3A21%3A39Z&sks=b&skv=2026-02-06&sig=JL1NcukhFCRrQT6tyQd1lqKfiwlHK9SCPLK5%2BaDphvQ%3D'
+          URL_V055: 'https://sdmntprkoreacentral.oaiusercontent.com/files/00000000-1484-8206-b488-b1d6cce1bae0/raw?se=2026-10-08T08%3A26%3A15Z&sp=r&sv=2026-02-06&sr=b&scid=43c2790c-c31b-5751-847b-eafb07d732d1&skoid=0765b554-4b90-4fa2-9d6d-0055a2427910&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-08T00%3A04%3A49Z&ske=2026-10-09T00%3A04%3A49Z&sks=b&skv=2026-02-06&sig=U0qrVLZYwif5fE3U5tMJsnV0PgrgeZaTi%2BoH%2BZQLLeA%3D'
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/v0.5.3 artifacts/v0.5.4 artifacts/v0.5.4.1 artifacts/v0.5.5
+          curl -fL --retry 3 "$URL_V053" -o /tmp/v053.zip
+          curl -fL --retry 3 "$URL_V054" -o /tmp/v054.zip
+          curl -fL --retry 3 "$URL_V0541" -o /tmp/v0541.zip
+          curl -fL --retry 3 "$URL_V055" -o /tmp/v055.zip
+          unzip -q -o /tmp/v053.zip -d artifacts/v0.5.3
+          unzip -q -o /tmp/v054.zip -d artifacts/v0.5.4
+          unzip -q -o /tmp/v0541.zip -d artifacts/v0.5.4.1
+          unzip -q -o /tmp/v055.zip -d artifacts/v0.5.5
+          find artifacts -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+      - name: Commit artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts
+          git commit -m "Migrate CheRPG versioned Blender artifacts"
+          git push origin main
