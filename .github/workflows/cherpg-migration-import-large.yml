@@ -1,0 +1,52 @@
+name: CheRPG Migration Import Large Binaries
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cherpg-migration-import-large.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download migration archive
+        shell: bash
+        env:
+          MIGRATION_URL: 'https://sdmntprwestus.oaiusercontent.com/files/00000000-f470-8230-9cca-cad6fdf468a9/raw?se=2026-10-08T08%3A23%3A20Z&sp=r&sv=2026-02-06&sr=b&scid=e35551ee-7e74-51f4-9d61-8d3dc58805a0&skoid=0765b554-4b90-4fa2-9d6d-0055a2427910&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-07T23%3A40%3A38Z&ske=2026-10-08T23%3A40%3A38Z&sks=b&skv=2026-02-06&sig=0u6nH%2Bemf9YS2ufw3PAjFHbKTwj0g%2BmzTa%2Bs%2BYOZYrc%3D'
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "$MIGRATION_URL" -o /tmp/cherpg-migration.zip
+          rm -rf /tmp/cherpg-migration
+          mkdir -p /tmp/cherpg-migration
+          unzip -q /tmp/cherpg-migration.zip -d /tmp/cherpg-migration
+          find /tmp/cherpg-migration -maxdepth 4 -type f -printf '%p %s bytes\n'
+      - name: Install binaries into repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          GLB="$(find /tmp/cherpg-migration -type f -name 'cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb' -print -quit)"
+          PNG="$(find /tmp/cherpg-migration -type f -name 'cherpg-pawn-protagonist-render-v0.5.4.png' -print -quit)"
+          test -n "$GLB"
+          test -n "$PNG"
+          mkdir -p cherpg_pipeline/render
+          cp "$GLB" cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb
+          cp "$PNG" cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          test "$(stat -c%s cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb)" -eq 4105308
+          test "$(stat -c%s cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png)" -eq 1077344
+          git status --short
+      - name: Commit migrated binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb
+          git add cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          git commit -m "Migrate CheRPG large binary assets"
+          git push origin main
