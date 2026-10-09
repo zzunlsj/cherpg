@@ -1,0 +1,29 @@
+{
+  "version": "0.0.4",
+  "head_vertices": 12076,
+  "head_faces": 12034,
+  "patches": {
+    "left_eye": {
+      "perimeter": 56,
+      "integrated_quad_loops": 7
+    },
+    "right_eye": {
+      "perimeter": 56,
+      "integrated_quad_loops": 7
+    },
+    "mouth": {
+      "perimeter": 60,
+      "integrated_quad_loops": 7
+    }
+  },
+  "watertight_graft_edges": true,
+  "head_and_eyelid_unified": true,
+  "actual_blender_model": "pawn-face-retopo-v0.0.4.blend",
+  "views": [
+    "front",
+    "profile",
+    "threequarter",
+    "face-detail"
+  ],
+  "remaining": "concept-art comparison, blink topology and facial deformation review"
+}
