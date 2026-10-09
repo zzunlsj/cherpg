@@ -1,0 +1,22 @@
+{
+  "version": "0.0.6",
+  "source": "pawn-head-shapes-v0.0.5.blend",
+  "blend": "pawn-head-shapes-v0.0.6.blend",
+  "modified_vertices": {
+    "eye": 707,
+    "nose": 317,
+    "ear": 328
+  },
+  "max_displacement_m": 0.0036463,
+  "eye_objects": [],
+  "eye_policy": "shape only",
+  "continuous_head_mesh": true,
+  "views": [
+    "front",
+    "profile",
+    "threequarter",
+    "face-detail",
+    "ear-detail"
+  ],
+  "approval": "technical checkpoint; visual similarity not yet accepted"
+}
