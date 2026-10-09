@@ -40,10 +40,18 @@ parts=[]
 for o in bpy.data.objects:
     if o.type != "MESH" or not o.name.startswith(("HEAD3_","HELM3_")):
         continue
-    if not any(m.type=="ARMATURE" and m.object==rig for m in o.modifiers):
-        raise RuntimeError("Unrigged head part: "+o.name)
-    if o.vertex_groups.get("Head") is None:
-        raise RuntimeError("Missing Head vertex group: "+o.name)
+    arm_mods=[m for m in o.modifiers if m.type=="ARMATURE"]
+    if not any(m.object==rig for m in arm_mods):
+        for m in arm_mods:
+            o.modifiers.remove(m)
+        m=o.modifiers.new("CheRPG_Armature","ARMATURE")
+        m.object=rig
+    vg=o.vertex_groups.get("Head")
+    if vg is None:
+        vg=o.vertex_groups.new(name="Head")
+    if len(o.data.vertices):
+        vg.add(list(range(len(o.data.vertices))),1.0,"REPLACE")
+    o["cherpg_primary_bone"]="Head"
     parts.append(o.name)
 if len(parts)<10:
     raise RuntimeError("Insufficient head parts")
