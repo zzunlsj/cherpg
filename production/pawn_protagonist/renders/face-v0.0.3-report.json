@@ -1,0 +1,28 @@
+{
+  "version": "0.0.3",
+  "mesh_name": "Pawn_Head_FaceBlockout",
+  "vertices": 11392,
+  "changed_vertices": 5087,
+  "max_displacement_m": 0.0105473,
+  "actual_mesh_sculpt": true,
+  "separate_eyes": false,
+  "separate_mouth": false,
+  "changes": [
+    "eye socket recesses",
+    "integrated eyelid rims and brow",
+    "bridge/tip/alar nose relief",
+    "small lip seam and chin softening"
+  ],
+  "renders": [
+    "front",
+    "profile",
+    "threequarter",
+    "face-detail"
+  ],
+  "blend": "pawn-face-landmarks-v0.0.3.blend",
+  "limitations": [
+    "no ocular openings/animated eyelids yet",
+    "parametric existing UV quad mesh needs eye/mouth loop retopology",
+    "concept image alignment still pending"
+  ]
+}
