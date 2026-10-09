@@ -57,11 +57,13 @@ jobs:
       - name: Commit actual Blender review renders
         shell: bash
         run: |
+          mkdir -p production/pawn_protagonist/modeling/checkpoints
+          cp production/pawn_protagonist/build/face-v0.0.3/pawn-face-landmarks-v0.0.3.blend production/pawn_protagonist/modeling/checkpoints/
           cp production/pawn_protagonist/build/face-v0.0.3/*.png production/pawn_protagonist/renders/
           cp production/pawn_protagonist/build/face-v0.0.3/report.json production/pawn_protagonist/renders/face-v0.0.3-report.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add production/pawn_protagonist/renders
+          git add production/pawn_protagonist/renders production/pawn_protagonist/modeling/checkpoints/pawn-face-landmarks-v0.0.3.blend
           if ! git diff --cached --quiet;then git commit -m "Add actual Blender face landmarks v0.0.3 renders";git push origin HEAD:main;fi
       - uses: actions/upload-artifact@v4
         with:
