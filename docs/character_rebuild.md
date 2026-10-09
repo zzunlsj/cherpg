@@ -26,3 +26,11 @@ No old v0.5.x workflow runs automatically from this new production directory.
 - QC: **FAIL visual likeness**. Giant bare cranial vault is temporary (helmet/hair not yet modeled); eyes remain stare-like, nose and upper/lower lip shape are too indistinct, and the face has not passed illustration comparison.
 - Next gate: build a registered front+profile guide from the approved reference; tune facial planes and lids with the helmet/hair silhouette visible. Validate shading and topology before rigging.
 - Never infer production approval merely from a green GitHub Actions run.
+
+## Head work status (v0.0.5 — geometric features only)
+- **User direction:** do **not** add eyeballs, iris or pupils. Sculpt only ears, nose and the **shape of the eye region**. Do not add visual images through image generation.
+- Source: `modeling/checkpoints/pawn-face-retopo-v0.0.4.blend`.
+- Actual Blender checkpoint: `modeling/checkpoints/pawn-head-shapes-v0.0.5.blend`; render images: `renders/pawn-head-shapes-v0.0.5-*.png`.
+- Six eye-related objects deleted (both eyeballs, both irises, both pupils). Eyelid/eye shape is only a shallow stone surface with two integrated retopology regions.
+- Nose bridge/tip and both ear forms were sculpted directly into the same head mesh; no detached geometric ear objects.
+- This is a **technical checkpoint, not a visual approval**. Ears currently read as simplified concentric relief; the old mouth is still present and was not part of this user's requested feature pass. Do not add finished eyeballs unless explicitly authorized by the user.
