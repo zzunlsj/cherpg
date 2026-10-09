@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "status": "blockout-needs-review",
+  "mesh": "Pawn_Head_FaceBlockout",
+  "vertices": 11392,
+  "quads": 11264,
+  "separate_eyes": false,
+  "separate_mouth": false,
+  "views": [
+    "front",
+    "profile",
+    "threequarter"
+  ],
+  "approval": "not yet matched pixel-for-pixel to approved illustration"
+}
