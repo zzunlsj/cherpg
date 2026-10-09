@@ -1,0 +1,70 @@
+name: CheRPG Pawn Face Landmarks v0.0.3
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/upper_head_v0002.py'
+      - 'production/pawn_protagonist/modeling/face_landmarks_v0003.py'
+      - '.github/workflows/cherpg-pawn-face-v0003.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sculpt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender";BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ];then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Build baseline v0.0.1 in Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p production/pawn_protagonist/build/face-v0.0.1
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background --python production/pawn_protagonist/modeling/face_blockout_v0001.py -- production/pawn_protagonist/build/face-v0.0.1
+      - name: Sculpt actual v0.0.2 mesh and render four views
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p production/pawn_protagonist/build/face-v0.0.2
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background production/pawn_protagonist/build/face-v0.0.1/pawn-face-blockout-v0.0.1.blend --python production/pawn_protagonist/modeling/upper_head_v0002.py -- production/pawn_protagonist/build/face-v0.0.1/pawn-face-blockout-v0.0.1.blend production/pawn_protagonist/build/face-v0.0.2
+          test -s production/pawn_protagonist/build/face-v0.0.2/pawn-face-upper-v0.0.2.blend
+          for a in front profile threequarter forehead-detail;do test -s "production/pawn_protagonist/build/face-v0.0.2/pawn-face-upper-v0.0.2-$a.png";done
+      - name: Sculpt v0.0.3 integrated facial landmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p production/pawn_protagonist/build/face-v0.0.3
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background production/pawn_protagonist/build/face-v0.0.2/pawn-face-upper-v0.0.2.blend --python production/pawn_protagonist/modeling/face_landmarks_v0003.py -- production/pawn_protagonist/build/face-v0.0.2/pawn-face-upper-v0.0.2.blend production/pawn_protagonist/build/face-v0.0.3
+          test -s production/pawn_protagonist/build/face-v0.0.3/pawn-face-landmarks-v0.0.3.blend
+          for a in front profile threequarter face-detail;do test -s "production/pawn_protagonist/build/face-v0.0.3/pawn-face-landmarks-v0.0.3-$a.png";done
+      - name: Commit actual Blender review renders
+        shell: bash
+        run: |
+          cp production/pawn_protagonist/build/face-v0.0.3/*.png production/pawn_protagonist/renders/
+          cp production/pawn_protagonist/build/face-v0.0.3/report.json production/pawn_protagonist/renders/face-v0.0.3-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add production/pawn_protagonist/renders
+          if ! git diff --cached --quiet;then git commit -m "Add actual Blender face landmarks v0.0.3 renders";git push origin HEAD:main;fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pawn-face-landmarks-v0.0.3-blend-and-renders
+          path: production/pawn_protagonist/build/face-v0.0.3/*
+          retention-days: 30
