@@ -1,0 +1,82 @@
+name: CheRPG v0.5.6 Upper Body Part Pass
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/upperbody_pass_v056.py'
+      - 'cherpg_pipeline/render_upperbody_v056.py'
+      - '.github/workflows/cherpg-upperbody-v056.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  upperbody:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Rebuild v0.5.6 head base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cherpg_pipeline/u053 cherpg_pipeline/u055shape cherpg_pipeline/u055rig cherpg_pipeline/u056head cherpg_pipeline/u056upper
+          mkdir -p cherpg_pipeline/u053 cherpg_pipeline/u055shape cherpg_pipeline/u055rig cherpg_pipeline/u056head cherpg_pipeline/u056upper
+
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py --             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb             cherpg_pipeline/u053
+
+          "$BLENDER_BIN" --background             cherpg_pipeline/u053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/silhouette_v055.py --             cherpg_pipeline/u053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             cherpg_pipeline/u055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend
+
+          "$BLENDER_BIN" --background             cherpg_pipeline/u055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend             --python cherpg_pipeline/rig_v055.py --             cherpg_pipeline/u055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend             cherpg_pipeline/u055rig
+
+          "$BLENDER_BIN" --background             cherpg_pipeline/u055rig/cherpg-pawn-protagonist-rigged-v0.5.5.blend             --python cherpg_pipeline/head_pass_v056.py --             cherpg_pipeline/u055rig/cherpg-pawn-protagonist-rigged-v0.5.5.blend             cherpg_pipeline/u056head/cherpg-pawn-protagonist-v0.5.6-head.blend
+
+      - name: Apply upper body pass
+        shell: bash
+        run: |
+          "$BLENDER_BIN" --background             cherpg_pipeline/u056head/cherpg-pawn-protagonist-v0.5.6-head.blend             --python cherpg_pipeline/upperbody_pass_v056.py --             cherpg_pipeline/u056head/cherpg-pawn-protagonist-v0.5.6-head.blend             cherpg_pipeline/u056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend
+
+      - name: Render upper body closeup
+        shell: bash
+        run: |
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background             cherpg_pipeline/u056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend             --python cherpg_pipeline/render_upperbody_v056.py --             cherpg_pipeline/u056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend             cherpg_pipeline/u056upper/cherpg-pawn-v0.5.6-upperbody-closeup.png
+
+      - name: Commit upper body render
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/renders_parts_v056/upperbody
+          cp cherpg_pipeline/u056upper/cherpg-pawn-v0.5.6-upperbody-closeup.png cherpg_pipeline/renders_parts_v056/upperbody/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_parts_v056/upperbody/*.png
+          git commit -m "Add v0.5.6 upper body part closeup" || true
+          git push origin HEAD:cherpg-blender-pipeline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.6-upperbody-part
+          path: cherpg_pipeline/u056upper/*
+          retention-days: 30

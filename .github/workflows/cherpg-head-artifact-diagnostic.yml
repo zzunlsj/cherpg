@@ -1,0 +1,44 @@
+name: CheRPG v0.5.13 Head Artifact Diagnostic
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/diagnose_head_artifacts_v0513.py'
+      - '.github/workflows/cherpg-head-artifact-diagnostic.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender";BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ];then mkdir -p "$ROOT";cd "$ROOT";curl -fL -o blender.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz;tar -xJf blender.tar.xz;fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Rebuild v0.5.13
+        shell: bash
+        run: |
+          rm -rf cherpg_pipeline/diag13 && mkdir -p cherpg_pipeline/diag13/{053,055s,055r,056,058,059,510,511,512,513}
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/diag13/053
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend --python cherpg_pipeline/silhouette_v055.py -- cherpg_pipeline/diag13/053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/diag13/055s/shape.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/055s/shape.blend --python cherpg_pipeline/rig_v055.py -- cherpg_pipeline/diag13/055s/shape.blend cherpg_pipeline/diag13/055r
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend --python cherpg_pipeline/head_pass_v056.py -- cherpg_pipeline/diag13/055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend cherpg_pipeline/diag13/056/head056.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/056/head056.blend --python cherpg_pipeline/head_rebuild_v058.py -- cherpg_pipeline/diag13/056/head056.blend cherpg_pipeline/diag13/058/head058.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/058/head058.blend --python cherpg_pipeline/head_detail_v059.py -- cherpg_pipeline/diag13/058/head058.blend cherpg_pipeline/diag13/059/head059.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/059/head059.blend --python cherpg_pipeline/head_sculpt_v0510.py -- cherpg_pipeline/diag13/059/head059.blend cherpg_pipeline/diag13/510/head510.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/510/head510.blend --python cherpg_pipeline/head_match_v0511.py -- cherpg_pipeline/diag13/510/head510.blend cherpg_pipeline/diag13/511/head511.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/511/head511.blend --python cherpg_pipeline/head_polish_v0512.py -- cherpg_pipeline/diag13/511/head511.blend cherpg_pipeline/diag13/512/head512.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/512/head512.blend --python cherpg_pipeline/head_clean_v0513.py -- cherpg_pipeline/diag13/512/head512.blend cherpg_pipeline/diag13/513/head513.blend
+      - name: Diagnose
+        run: |
+          "$BLENDER_BIN" --background cherpg_pipeline/diag13/513/head513.blend --python cherpg_pipeline/diagnose_head_artifacts_v0513.py -- cherpg_pipeline/diag13/513/head513.blend

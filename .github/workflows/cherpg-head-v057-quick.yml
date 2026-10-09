@@ -1,0 +1,56 @@
+name: CheRPG v0.5.7 Head Quick Review
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/render_head_v057_quick.py'
+      - '.github/workflows/cherpg-head-v057-quick.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"; BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"; curl -fL -o blender.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz; tar -xJf blender.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Rebuild head
+        shell: bash
+        run: |
+          rm -rf cherpg_pipeline/q053 cherpg_pipeline/q055s cherpg_pipeline/q055r cherpg_pipeline/q056 cherpg_pipeline/q057
+          mkdir -p cherpg_pipeline/q053 cherpg_pipeline/q055s cherpg_pipeline/q055r cherpg_pipeline/q056 cherpg_pipeline/q057
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/q053
+          "$BLENDER_BIN" --background cherpg_pipeline/q053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend --python cherpg_pipeline/silhouette_v055.py -- cherpg_pipeline/q053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/q055s/shape.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/q055s/shape.blend --python cherpg_pipeline/rig_v055.py -- cherpg_pipeline/q055s/shape.blend cherpg_pipeline/q055r
+          "$BLENDER_BIN" --background cherpg_pipeline/q055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend --python cherpg_pipeline/head_pass_v056.py -- cherpg_pipeline/q055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend cherpg_pipeline/q056/head056.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/q056/head056.blend --python cherpg_pipeline/head_sculpt_v057.py -- cherpg_pipeline/q056/head056.blend cherpg_pipeline/q057/head057.blend
+      - name: Quick render
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/q057/renders
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background cherpg_pipeline/q057/head057.blend --python cherpg_pipeline/render_head_v057_quick.py -- cherpg_pipeline/q057/head057.blend cherpg_pipeline/q057/renders
+      - name: Commit
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/renders_parts_v057/head_quick
+          cp cherpg_pipeline/q057/renders/*.png cherpg_pipeline/renders_parts_v057/head_quick/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_parts_v057/head_quick/*.png
+          git commit -m "Add v0.5.7 head quick review" || true
+          git push origin HEAD:cherpg-blender-pipeline

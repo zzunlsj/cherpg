@@ -1,0 +1,65 @@
+name: CheRPG v0.5.8 Head Rebuild
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/head_rebuild_v058.py'
+      - 'cherpg_pipeline/render_head_v058.py'
+      - '.github/workflows/cherpg-head-v058.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"; BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"; curl -fL -o blender.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz; tar -xJf blender.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Rebuild base to v0.5.6 head
+        shell: bash
+        run: |
+          rm -rf cherpg_pipeline/r58_053 cherpg_pipeline/r58_055s cherpg_pipeline/r58_055r cherpg_pipeline/r58_056 cherpg_pipeline/r58_out
+          mkdir -p cherpg_pipeline/r58_053 cherpg_pipeline/r58_055s cherpg_pipeline/r58_055r cherpg_pipeline/r58_056 cherpg_pipeline/r58_out
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/r58_053
+          "$BLENDER_BIN" --background cherpg_pipeline/r58_053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend --python cherpg_pipeline/silhouette_v055.py -- cherpg_pipeline/r58_053/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend cherpg_pipeline/r58_055s/shape.blend
+          "$BLENDER_BIN" --background cherpg_pipeline/r58_055s/shape.blend --python cherpg_pipeline/rig_v055.py -- cherpg_pipeline/r58_055s/shape.blend cherpg_pipeline/r58_055r
+          "$BLENDER_BIN" --background cherpg_pipeline/r58_055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend --python cherpg_pipeline/head_pass_v056.py -- cherpg_pipeline/r58_055r/cherpg-pawn-protagonist-rigged-v0.5.5.blend cherpg_pipeline/r58_056/head056.blend
+      - name: Rebuild head from scratch
+        shell: bash
+        run: |
+          "$BLENDER_BIN" --background cherpg_pipeline/r58_056/head056.blend --python cherpg_pipeline/head_rebuild_v058.py -- cherpg_pipeline/r58_056/head056.blend cherpg_pipeline/r58_out/cherpg-pawn-protagonist-v0.5.8-head.blend
+      - name: Render three views
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/r58_out/renders
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background cherpg_pipeline/r58_out/cherpg-pawn-protagonist-v0.5.8-head.blend --python cherpg_pipeline/render_head_v058.py -- cherpg_pipeline/r58_out/cherpg-pawn-protagonist-v0.5.8-head.blend cherpg_pipeline/r58_out/renders
+      - name: Commit renders
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/renders_parts_v058/head
+          cp cherpg_pipeline/r58_out/renders/*.png cherpg_pipeline/renders_parts_v058/head/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_parts_v058/head/*.png
+          git commit -m "Add v0.5.8 rebuilt head renders" || true
+          git push origin HEAD:cherpg-blender-pipeline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.8-head-rebuild
+          path: cherpg_pipeline/r58_out/*
+          retention-days: 30

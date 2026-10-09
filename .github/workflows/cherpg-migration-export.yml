@@ -1,0 +1,32 @@
+name: CheRPG Migration Export Large Binaries
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - '.github/workflows/cherpg-migration-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb
+          test -s cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          sha256sum             cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb             cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-migration-large-binaries
+          path: |
+            cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb
+            cherpg_pipeline/render/cherpg-pawn-protagonist-render-v0.5.4.png
+          if-no-files-found: error
+          retention-days: 7

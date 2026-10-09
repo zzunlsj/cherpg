@@ -1,0 +1,81 @@
+name: CheRPG v0.5.6 Arm Hand Part Pass
+
+on:
+  push:
+    branches: [cherpg-blender-pipeline]
+    paths:
+      - 'cherpg_pipeline/arm_pass_v056.py'
+      - 'cherpg_pipeline/render_arm_v056.py'
+      - '.github/workflows/cherpg-arm-v056.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  arm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"; BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"; cd "$ROOT"
+            curl -fL --retry 3 --retry-delay 5 -o blender-5.2.2-linux-x64.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf blender-5.2.2-linux-x64.tar.xz
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Rebuild previous part passes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cherpg_pipeline/a053p cherpg_pipeline/a055shape cherpg_pipeline/a055rig cherpg_pipeline/a056head cherpg_pipeline/a056upper cherpg_pipeline/a056arms
+          mkdir -p cherpg_pipeline/a053p cherpg_pipeline/a055shape cherpg_pipeline/a055rig cherpg_pipeline/a056head cherpg_pipeline/a056upper cherpg_pipeline/a056arms
+
+          "$BLENDER_BIN" --background --python cherpg_pipeline/cleanup_v053.py -- cherpg_pipeline/cherpg-pawn-protagonist-sculpt-refined-v0.5.2.glb cherpg_pipeline/a053p
+
+          "$BLENDER_BIN" --background cherpg_pipeline/a053p/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             --python cherpg_pipeline/silhouette_v055.py -- cherpg_pipeline/a053p/cherpg-pawn-protagonist-blender-ready-v0.5.3.blend             cherpg_pipeline/a055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend
+
+          "$BLENDER_BIN" --background cherpg_pipeline/a055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend             --python cherpg_pipeline/rig_v055.py -- cherpg_pipeline/a055shape/cherpg-pawn-protagonist-silhouette-v0.5.5.blend cherpg_pipeline/a055rig
+
+          "$BLENDER_BIN" --background cherpg_pipeline/a055rig/cherpg-pawn-protagonist-rigged-v0.5.5.blend             --python cherpg_pipeline/head_pass_v056.py -- cherpg_pipeline/a055rig/cherpg-pawn-protagonist-rigged-v0.5.5.blend             cherpg_pipeline/a056head/cherpg-pawn-protagonist-v0.5.6-head.blend
+
+          "$BLENDER_BIN" --background cherpg_pipeline/a056head/cherpg-pawn-protagonist-v0.5.6-head.blend             --python cherpg_pipeline/upperbody_pass_v056.py -- cherpg_pipeline/a056head/cherpg-pawn-protagonist-v0.5.6-head.blend             cherpg_pipeline/a056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend
+
+      - name: Apply arm and hand pass
+        shell: bash
+        run: |
+          "$BLENDER_BIN" --background cherpg_pipeline/a056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend             --python cherpg_pipeline/arm_pass_v056.py -- cherpg_pipeline/a056upper/cherpg-pawn-protagonist-v0.5.6-upperbody.blend             cherpg_pipeline/a056arms/cherpg-pawn-protagonist-v0.5.6-arms.blend
+
+      - name: Render arm closeup
+        shell: bash
+        run: |
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background cherpg_pipeline/a056arms/cherpg-pawn-protagonist-v0.5.6-arms.blend             --python cherpg_pipeline/render_arm_v056.py -- cherpg_pipeline/a056arms/cherpg-pawn-protagonist-v0.5.6-arms.blend             cherpg_pipeline/a056arms/cherpg-pawn-v0.5.6-arms-closeup.png
+
+      - name: Commit arm render
+        shell: bash
+        run: |
+          mkdir -p cherpg_pipeline/renders_parts_v056/arms
+          cp cherpg_pipeline/a056arms/cherpg-pawn-v0.5.6-arms-closeup.png cherpg_pipeline/renders_parts_v056/arms/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cherpg_pipeline/renders_parts_v056/arms/*.png
+          git commit -m "Add v0.5.6 arm and hand part closeup" || true
+          git push origin HEAD:cherpg-blender-pipeline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cherpg-pawn-v0.5.6-arm-hand-part
+          path: cherpg_pipeline/a056arms/*
+          retention-days: 30
