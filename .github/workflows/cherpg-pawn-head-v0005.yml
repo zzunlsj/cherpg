@@ -1,0 +1,66 @@
+name: CheRPG Pawn Head Shapes v0.0.5
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/head_shapes_v0005.py'
+      - '.github/workflows/cherpg-pawn-head-v0005.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sculpt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender";BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ];then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Sculpt shapes, verify eye removal, render 5 views
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p production/pawn_protagonist/build/face-v0.0.5
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background production/pawn_protagonist/modeling/checkpoints/pawn-face-retopo-v0.0.4.blend --python production/pawn_protagonist/modeling/head_shapes_v0005.py -- production/pawn_protagonist/modeling/checkpoints/pawn-face-retopo-v0.0.4.blend production/pawn_protagonist/build/face-v0.0.5
+          test -s production/pawn_protagonist/build/face-v0.0.5/pawn-head-shapes-v0.0.5.blend
+          for a in front profile threequarter face-detail ear-detail; do test -s "production/pawn_protagonist/build/face-v0.0.5/pawn-head-shapes-v0.0.5-$a.png"; done
+          python - <<'PY'
+          import json
+          with open("production/pawn_protagonist/build/face-v0.0.5/report.json") as f: r=json.load(f)
+          assert len(r["removed_eye_objects"])==6 and not r["remaining_eye_objects"]
+          assert r["single_continuous_head_for_eye_nose_ear_forms"]
+          PY
+      - name: Publish actual Blender model and renders
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp production/pawn_protagonist/build/face-v0.0.5/pawn-head-shapes-v0.0.5.blend production/pawn_protagonist/modeling/checkpoints/
+          cp production/pawn_protagonist/build/face-v0.0.5/*.png production/pawn_protagonist/renders/
+          cp production/pawn_protagonist/build/face-v0.0.5/report.json production/pawn_protagonist/renders/face-v0.0.5-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.5.blend production/pawn_protagonist/renders
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Pawn 0.0.5 actual Blender ear/nose/eye-form render"
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pawn-head-shapes-v0.0.5-blend-renders
+          path: production/pawn_protagonist/build/face-v0.0.5/*
+          retention-days: 30
