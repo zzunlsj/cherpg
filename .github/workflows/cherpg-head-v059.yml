@@ -1,11 +1,12 @@
 name: CheRPG v0.5.9 Head Detail
 on:
   push:
-    branches: [cherpg-blender-pipeline]
+    branches: [main]
     paths:
       - 'cherpg_pipeline/head_detail_v059.py'
       - 'cherpg_pipeline/render_head_v059.py'
       - 'cherpg_pipeline/render_head_v059_pbr.py'
+      - 'cherpg_pipeline/head_rebuild_v058.py'
       - '.github/workflows/cherpg-head-v059.yml'
   workflow_dispatch:
 permissions:
@@ -61,7 +62,7 @@ jobs:
           git config user.name "github-actions[bot]";git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add cherpg_pipeline/renders_parts_v059/head/*.png
           git commit -m "Add v0.5.9 detailed head renders" || true
-          git push origin HEAD:cherpg-blender-pipeline
+          git push origin HEAD:main
       - uses: actions/upload-artifact@v4
         with:
           name: cherpg-pawn-v0.5.9-head-detail
