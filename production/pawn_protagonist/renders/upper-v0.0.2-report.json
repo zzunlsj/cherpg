@@ -1,0 +1,22 @@
+{
+  "version": "0.0.2",
+  "status": "upper-skull-pass-awaiting-review",
+  "source": "pawn-face-blockout-v0.0.1.blend",
+  "result": "pawn-face-upper-v0.0.2.blend",
+  "vertices": 11392,
+  "max_vertex_shift_m": 0.006199933476581471,
+  "adjustments": [
+    "rounder upper cranium",
+    "flatter forehead",
+    "temple/brow transition",
+    "smoother rear vault",
+    "shorter apex"
+  ],
+  "views": [
+    "front",
+    "profile",
+    "threequarter",
+    "forehead-detail"
+  ],
+  "notes": "Actual Blender mesh edit. No image generation, no eyes/mouth added."
+}
