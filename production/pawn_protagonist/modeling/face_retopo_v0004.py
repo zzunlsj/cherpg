@@ -148,6 +148,52 @@ for name,x in (("L",-.034),("R",.034)):
     ball("Eyeball_"+name,(x,center,z),.0105,sclera,(1,.91,.86))
     ball("Iris_"+name,(x,surface+.0021,z-.0008),.00365,iris,(1,.42,1))
     ball("Pupil_"+name,(x,surface+.0008,z-.0008),.0016,pupil,(1,.42,1))
+# Correct the transition surfaces around each patch, while keeping
+# the constructed eyelid/lip loops and their cavity depths intact.
+# Their previous rectangular-to-ellipse bridging produced steep relief folds.
+def step(t):
+    t=max(0.,min(1.,t))
+    return t*t*(3-2*t)
+for vertex in new.vertices:
+    p=vertex.co
+    x,z=p.x,p.z-1.422
+    # Only the visible anterior face is affected.
+    fw=step((-p.y-.012)/.056)
+    eyes=0.
+    for ex in (-.034,.034):
+        dist=math.sqrt(((x-ex)/.019)**2+((z-.011)/.0063)**2)
+        protect=step((dist-1.00)/.95)
+        eyes=max(eyes,g(x,ex,.043)*g(z,.011,.044)*protect)
+    lipdist=math.sqrt((x/.018)**2+((z+.064)/.00085)**2)
+    lipprotect=step((lipdist-1.10)/3.2)
+    mouth=g(x,0,.048)*g(z,-.064,.044)*lipprotect
+    weight=.92*fw*max(eyes,mouth)
+    # An anatomically restrained nose remains connected to the same mesh.
+    nose=.0042*g(x,0,.013)*g(z,-.036,.020)
+    target=baseline_y(x,p.z)-nose
+    p.y=p.y*(1-weight)+target*weight
+new.update()
+# A small non-destructive mesh relaxer removes remaining transition chatter.
+# Exclude eyelid margins and the mouth crease from the smoothing vertex group.
+smooth_group=head.vertex_groups.new(name="Face_Transition_Relax")
+weights=[]
+for vertex in new.vertices:
+    p=vertex.co
+    x,z=p.x,p.z-1.422
+    w=max(g(x,-.034,.047)*g(z,.011,.048),
+          g(x,.034,.047)*g(z,.011,.048),
+          g(x,0,.055)*g(z,-.064,.046))
+    for ex in (-.034,.034):
+        inner=math.sqrt(((x-ex)/.019)**2+((z-.011)/.0063)**2)
+        w*=.22+.78*step((inner-1.05)/1.05)
+    innerlip=math.sqrt((x/.018)**2+((z+.064)/.00085)**2)
+    w*=.15+.85*step((innerlip-1.1)/3.0)
+    if w>.02:
+        smooth_group.add([vertex.index],min(1.,w),"REPLACE")
+modifier=head.modifiers.new("OrganicFaceTransitionSmooth","SMOOTH")
+modifier.factor=.68
+modifier.iterations=12
+modifier.vertex_group=smooth_group.name
 head["loop_retopology_version"]="0.0.4"
 head["validation"]="quad loops grafted to original continuous face; original preserved"
 scene=bpy.context.scene
