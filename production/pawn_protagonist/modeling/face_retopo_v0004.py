@@ -23,9 +23,9 @@ if len(mesh.vertices)!=(NL+1)*NJ or len(mesh.polygons)!=NL*NJ:
 def g(x,c,s):return math.exp(-((x-c)/s)**2)
 def blend(a,b,t):return a*(1-t)+b*t
 patches=[
- dict(name="left_eye",i0=35,i1=48,j0=79,j1=94,cx=-.034,z=.011,rx=.020,rz=.0087,kind="eye"),
- dict(name="right_eye",i0=35,i1=48,j0=98,j1=113,cx=.034,z=.011,rx=.020,rz=.0087,kind="eye"),
- dict(name="mouth",i0=54,i1=66,j0=87,j1=105,cx=0.,z=-.064,rx=.024,rz=.0016,kind="mouth")
+ dict(name="left_eye",i0=35,i1=48,j0=79,j1=94,cx=-.034,z=.011,rx=.019,rz=.0063,kind="eye"),
+ dict(name="right_eye",i0=35,i1=48,j0=98,j1=113,cx=.034,z=.011,rx=.019,rz=.0063,kind="eye"),
+ dict(name="mouth",i0=54,i1=66,j0=87,j1=105,cx=0.,z=-.064,rx=.022,rz=.00085,kind="mouth")
 ]
 def inside(idx,r):
     i,j=divmod(idx,NJ)
@@ -67,8 +67,13 @@ for r in patches:
     cx,cz,rx,rz=r["cx"],1.422+r["z"],r["rx"],r["rz"]
     eye=r["kind"]=="eye"
     ellipse=[]
+    # Match the rectangle perimeter using its OWN normalized scale.
+    # Normalizing by the much smaller inner ellipse radii collapses
+    # whole outer edges onto eye/mouth tips and creates triangular folds.
+    bx=(max(v.x for v in border)-min(v.x for v in border))*0.5
+    bz=(max(v.z for v in border)-min(v.z for v in border))*0.5
     for p in border:
-        theta=math.atan2((p.z-cz)/max(rz,.001),(p.x-cx)/rx)
+        theta=math.atan2((p.z-cz)/max(bz,.001),(p.x-cx)/max(bx,.001))
         co,si=math.cos(theta),math.sin(theta)
         taper=.76+.24*(1-abs(co)**4) if eye else 1
         ellipse.append((cx+rx*co,cz+rz*si*taper+(.0015*co if eye else 0)))
@@ -138,10 +143,11 @@ def ball(name,xyz,r,mat,scale=(1,1,1)):
     for f in obj.data.polygons:f.use_smooth=True
 for name,x in (("L",-.034),("R",.034)):
     z=1.433
-    center=baseline_y(x,z)+.0088
-    ball("Eyeball_"+name,(x,center,z),.0120,sclera,(1,.91,.87))
-    ball("Iris_"+name,(x,center-.010,z-.0008),.0053,iris,(1,.38,1))
-    ball("Pupil_"+name,(x,center-.0125,z-.0008),.0026,pupil,(1,.5,1))
+    surface=baseline_y(x,z)
+    center=surface+.0128
+    ball("Eyeball_"+name,(x,center,z),.0105,sclera,(1,.91,.86))
+    ball("Iris_"+name,(x,surface+.0021,z-.0008),.00365,iris,(1,.42,1))
+    ball("Pupil_"+name,(x,surface+.0008,z-.0008),.0016,pupil,(1,.42,1))
 head["loop_retopology_version"]="0.0.4"
 head["validation"]="quad loops grafted to original continuous face; original preserved"
 scene=bpy.context.scene
