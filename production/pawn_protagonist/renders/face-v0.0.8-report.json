@@ -1,0 +1,23 @@
+{
+  "version": "0.0.8",
+  "source": "pawn-head-shapes-v0.0.7.blend",
+  "baseline": "pawn-face-retopo-v0.0.4.blend",
+  "blend": "pawn-head-shapes-v0.0.8.blend",
+  "modified_vertices": {
+    "ear_reset_and_sculpt": 582,
+    "eye_contour": 786,
+    "nose_transition": 411
+  },
+  "max_displacement_m": 0.0086751,
+  "eye_objects": [],
+  "eye_policy": "stone outline only, no eyeballs",
+  "head_vertices": 12076,
+  "views": [
+    "front",
+    "profile",
+    "threequarter",
+    "face-detail",
+    "ear-detail"
+  ],
+  "approved": false
+}
