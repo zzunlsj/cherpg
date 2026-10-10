@@ -1,0 +1,27 @@
+{
+  "version": "0.0.9",
+  "source": "pawn-head-shapes-v0.0.8.blend",
+  "baseline": "pawn-face-retopo-v0.0.4.blend",
+  "blend": "pawn-head-shapes-v0.0.9.blend",
+  "ear_reset_verts": 584,
+  "eye_region_verts": 786,
+  "ear_sculpt_verts": 6044,
+  "nose_transition_verts": 5094,
+  "head_vertices": 192368,
+  "max_sculpt_delta_m": 0.0121726,
+  "peak_ear_relief_m": 0.0121726,
+  "eye_objects": [],
+  "eye_policy": "stone contour only",
+  "approval": "PENDING visual reference review",
+  "views": [
+    "front",
+    "profile",
+    "threequarter",
+    "face-detail",
+    "ear-detail"
+  ],
+  "research": [
+    "NIH external ear anatomy",
+    "Blender Studio facial topology"
+  ]
+}
