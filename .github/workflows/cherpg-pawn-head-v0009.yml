@@ -1,0 +1,73 @@
+name: CheRPG Pawn Face Anatomy v0.0.9
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/head_anatomy_v0009.py'
+      - '.github/workflows/cherpg-pawn-head-v0009.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sculpt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"; BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Restore ear baseline and sculpt on refined mesh
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.9
+          mkdir -p "$OUT"
+          SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.8.blend
+          BASE=production/pawn_protagonist/modeling/checkpoints/pawn-face-retopo-v0.0.4.blend
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_anatomy_v0009.py -- "$SRC" "$BASE" "$OUT"
+          test -s "$OUT/pawn-head-shapes-v0.0.9.blend"
+          for a in front profile threequarter face-detail ear-detail; do
+            test -s "$OUT/pawn-head-shapes-v0.0.9-$a.png"
+          done
+          python - <<'PY'
+          import json
+          with open("production/pawn_protagonist/build/face-v0.0.9/report.json") as f:r=json.load(f)
+          assert r["eye_objects"]==[]
+          assert r["head_vertices"]>60000 and r["eye_region_verts"]==786
+          assert r["peak_ear_relief_m"]>0.004
+          PY
+      - name: Publish Blender checkpoint and five real renders
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.9
+          cp "$OUT/pawn-head-shapes-v0.0.9.blend" production/pawn_protagonist/modeling/checkpoints/
+          cp "$OUT"/*.png production/pawn_protagonist/renders/
+          cp "$OUT/report.json" production/pawn_protagonist/renders/face-v0.0.9-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.9.blend production/pawn_protagonist/renders
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish actual Pawn v0.0.9 anatomical ear and eye-contour renders"
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pawn-head-v0.0.9-anatomy-sculpt-renders
+          path: production/pawn_protagonist/build/face-v0.0.9/*
+          retention-days: 30
