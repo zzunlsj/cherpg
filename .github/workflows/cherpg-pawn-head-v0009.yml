@@ -39,7 +39,7 @@ jobs:
           mkdir -p "$OUT"
           SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.8.blend
           BASE=production/pawn_protagonist/modeling/checkpoints/pawn-face-retopo-v0.0.4.blend
-          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_anatomy_v0009.py -- "$SRC" "$BASE" "$OUT"
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_anatomy_v0009.py -- "$SRC" "$BASE" "$OUT" 2>&1 | tee "$OUT/blender-v0009.log"
           test -s "$OUT/pawn-head-shapes-v0.0.9.blend"
           for a in front profile threequarter face-detail ear-detail; do
             test -s "$OUT/pawn-head-shapes-v0.0.9-$a.png"
@@ -66,7 +66,27 @@ jobs:
             git commit -m "Publish actual Pawn v0.0.9 anatomical ear and eye-contour renders"
             git push origin HEAD:main
           fi
+      - name: Preserve Blender error log on failed build
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.9
+          SRCLOG="$OUT/blender-v0009.log"
+          DST=production/pawn_protagonist/renders/face-v0.0.9-failure.log
+          mkdir -p "$(dirname "$DST")"
+          if [ -s "$SRCLOG" ]; then
+            tail -n 350 "$SRCLOG" > "$DST"
+          else
+            echo "Build failed before Blender logging or was interrupted. Inspect workflow run logs." > "$DST"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DST"
+          git commit -m "Capture Pawn v0.0.9 Blender failure diagnostic" || true
+          git push origin HEAD:main || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: pawn-head-v0.0.9-anatomy-sculpt-renders
           path: production/pawn_protagonist/build/face-v0.0.9/*
