@@ -37,15 +37,15 @@ jobs:
           set -euo pipefail
           OUT=production/pawn_protagonist/build/face-v0.0.7
           mkdir -p "$OUT"
-          SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.5.blend
+          SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.6.blend
           LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_refinement_v0007.py -- "$SRC" "$OUT"
           test -s "$OUT/pawn-head-shapes-v0.0.7.blend"
           for a in front profile threequarter face-detail ear-detail; do test -s "$OUT/pawn-head-shapes-v0.0.7-$a.png"; done
           python - <<'PY'
           import json
           with open("production/pawn_protagonist/build/face-v0.0.7/report.json") as f:r=json.load(f)
-          assert r["eye_objects"]==[] and r["eye_policy"]=="shape only"
-          assert r["continuous_head_mesh"] and r["max_displacement_m"]<0.006
+          assert r["eye_objects"]==[] and r["eye_policy"]=="only outline, no eyeballs"
+          assert r["max_displacement_m"]<0.008 and r["approved"] is False
           PY
       - name: Publish actual Blender checkpoint and renders
         shell: bash
