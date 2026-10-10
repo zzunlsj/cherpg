@@ -1,0 +1,91 @@
+name: CheRPG Pawn Hero Modular Head v0.0.11
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/pawn_modular_parts_v0011.py'
+      - '.github/workflows/cherpg-pawn-modular-v0011.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Install Blender and headless rendering dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ];then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Build actual 3D parts and render turns
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/modular-v0.0.11
+          mkdir -p "$OUT"
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background --factory-startup --python production/pawn_protagonist/modeling/pawn_modular_parts_v0011.py -- "$OUT" 2>&1 | tee "$OUT/blender.log"
+          test -s "$OUT/pawn-head-parts-v0.0.11.blend"
+          python - <<'PY'
+          import json,pathlib
+          out=pathlib.Path('production/pawn_protagonist/build/modular-v0.0.11')
+          d=json.loads((out/'pawn-head-parts-v0.0.11-report.json').read_text())
+          assert d['primary_parts']==['helmet','hair','face']
+          assert d['ear_object_count']==2 and d['eye_globes']==0
+          assert d['assembled_common_coordinates'] and d['helmet_hollow']
+          assert d['glb_count']==6 and d['render_count']==19, d
+          assert all((out/p).stat().st_size>1000 for p in d['exports']+d['renders'])
+          PY
+      - name: Publish reviewed technical checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/modular-v0.0.11
+          DEST=production/pawn_protagonist/modeling/checkpoints
+          mkdir -p "$DEST"
+          cp "$OUT/pawn-head-parts-v0.0.11.blend" "$DEST/"
+          cp "$OUT"/*.glb production/pawn_protagonist/exports/
+          cp "$OUT"/*.png production/pawn_protagonist/renders/
+          cp "$OUT/pawn-head-parts-v0.0.11-report.json" production/pawn_protagonist/renders/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEST/pawn-head-parts-v0.0.11.blend" production/pawn_protagonist/exports production/pawn_protagonist/renders
+          if ! git diff --cached --quiet;then
+            git commit -m "Publish actual Pawn Hero modular head v0.0.11 Blender GLBs and 19 renders"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Preserve failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG=production/pawn_protagonist/build/modular-v0.0.11/blender.log
+          OUT=production/pawn_protagonist/renders/pawn-modular-v0.0.11-failure.log
+          if [ -s "$LOG" ];then tail -n 450 "$LOG" > "$OUT";else echo "Failure before Blender log. See GitHub Actions job logs." > "$OUT";fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "Record modular Pawn Hero Blender failure diagnostics" || true
+          git pull --rebase origin main || true
+          git push origin HEAD:main || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pawn-hero-modular-head-v0.0.11
+          path: production/pawn_protagonist/build/modular-v0.0.11/*
+          retention-days: 30
