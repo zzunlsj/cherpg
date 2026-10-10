@@ -163,8 +163,8 @@ head["sculpt_status"]="high-resolution sculpt checkpoint; RETOPOLOGY REQUIRED fo
 scene=bpy.context.scene
 scene["build_version"]="pawn-head-shapes-v0.0.9"
 scene["approval"]="visual comparison REQUIRED; not approved for Godot"
-scene.render.engine="CYCLES";scene.cycles.samples=48
-scene.render.resolution_x=900;scene.render.resolution_y=900
+scene.render.engine="CYCLES";scene.cycles.samples=20
+scene.render.resolution_x=768;scene.render.resolution_y=768
 scene.render.resolution_percentage=100
 scene.render.image_settings.file_format="PNG"
 scene.view_settings.view_transform="Standard"
