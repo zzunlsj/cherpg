@@ -1,0 +1,55 @@
+{
+  "version": "0.0.11",
+  "primary_parts": [
+    "helmet",
+    "hair",
+    "face"
+  ],
+  "subparts": [
+    "face_shape",
+    "ears",
+    "eyes",
+    "eyebrows",
+    "nose",
+    "mouth"
+  ],
+  "helmet_hollow": true,
+  "hat_bilateral_symmetry": true,
+  "ear_object_count": 2,
+  "eye_globes": 0,
+  "assembled_common_coordinates": true,
+  "mesh_count": 43,
+  "glb_count": 6,
+  "render_count": 19,
+  "exports": [
+    "pawn-head-01_helmet-v0.0.11.glb",
+    "pawn-head-02_hair-v0.0.11.glb",
+    "pawn-head-assembled-v0.0.11.glb",
+    "pawn-head-03_02_ears-v0.0.11.glb",
+    "pawn-head-03_face_complete-v0.0.11.glb",
+    "pawn-head-03_01_face_shape-v0.0.11.glb"
+  ],
+  "renders": [
+    "pawn-head-01_helmet-front-v0.0.11.png",
+    "pawn-head-03_01_face_shape-front-v0.0.11.png",
+    "pawn-head-assembled-top-v0.0.11.png",
+    "pawn-head-03_face_complete-front-v0.0.11.png",
+    "pawn-head-01_helmet-right-v0.0.11.png",
+    "pawn-head-03_02_ears-front-v0.0.11.png",
+    "pawn-head-assembled-back_right_135-v0.0.11.png",
+    "pawn-head-assembled-front_right_45-v0.0.11.png",
+    "pawn-head-assembled-front_left_315-v0.0.11.png",
+    "pawn-head-03_01_face_shape-right-v0.0.11.png",
+    "pawn-head-assembled-back_left_225-v0.0.11.png",
+    "pawn-head-03_02_ears-right-v0.0.11.png",
+    "pawn-head-assembled-bottom-v0.0.11.png",
+    "pawn-head-02_hair-front-v0.0.11.png",
+    "pawn-head-02_hair-right-v0.0.11.png",
+    "pawn-head-assembled-right-v0.0.11.png",
+    "pawn-head-assembled-back-v0.0.11.png",
+    "pawn-head-assembled-front-v0.0.11.png",
+    "pawn-head-assembled-left-v0.0.11.png"
+  ],
+  "art_reference": "CheRPG pawn hero locked 3-part and 8+2 turnaround concept",
+  "visual_approval": "PENDING user review; procedural blockout, not final production model"
+}
