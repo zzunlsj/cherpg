@@ -1,0 +1,82 @@
+name: CheRPG Pawn Head Softening v0.0.10
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/head_softening_v00010.py'
+      - '.github/workflows/cherpg-pawn-head-v00010.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  sculpt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender";BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ];then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Sculpt and render five angles
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.10
+          SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.9.blend
+          mkdir -p "$OUT"
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_softening_v00010.py -- "$SRC" "$OUT" 2>&1 | tee "$OUT/blender-v00010.log"
+          test -s "$OUT/pawn-head-shapes-v0.0.10.blend"
+          for n in front profile threequarter face-detail ear-detail; do test -s "$OUT/pawn-head-shapes-v0.0.10-$n.png"; done
+          python - <<'PY'
+          import json
+          with open("production/pawn_protagonist/build/face-v0.0.10/report.json") as f:r=json.load(f)
+          assert r["eye_objects"]==[] and r["head_vertices"]==192368
+          assert r["modified_vertices"]["ear"]>1000 and r["modified_vertices"]["nose"]>500
+          assert not r["approved"]
+          PY
+      - name: Publish real Blender model and renders
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.10
+          cp "$OUT/pawn-head-shapes-v0.0.10.blend" production/pawn_protagonist/modeling/checkpoints/
+          cp "$OUT"/*.png production/pawn_protagonist/renders/
+          cp "$OUT/report.json" production/pawn_protagonist/renders/face-v0.0.10-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.10.blend production/pawn_protagonist/renders
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish actual v0.0.10 softened ear nose and eyelid sculpt"
+            git push origin HEAD:main
+          fi
+      - name: Preserve Blender error log on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG=production/pawn_protagonist/build/face-v0.0.10/blender-v00010.log
+          DST=production/pawn_protagonist/renders/face-v0.0.10-failure.log
+          if [ -s "$LOG" ];then tail -n 350 "$LOG" > "$DST"; else echo "Check job logs: Blender did not produce diagnostic log" > "$DST";fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DST";git commit -m "Capture Pawn v0.0.10 error" || true;git push origin HEAD:main || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pawn-head-v0.0.10-model-renders
+          path: production/pawn_protagonist/build/face-v0.0.10/*
+          retention-days: 30
