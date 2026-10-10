@@ -1,0 +1,78 @@
+name: CheRPG Pawn Head Ear Rebuild v0.0.8
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'production/pawn_protagonist/modeling/head_refinement_v0008.py'
+      - '.github/workflows/cherpg-pawn-head-v0008.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: cherpg-pawn-head-v0008-main
+  cancel-in-progress: false
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+      - name: Prepare Blender
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+          ROOT="$HOME/.cache/cherpg-blender";BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            curl -fL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender.tar.xz" -C "$ROOT"
+          fi
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+      - name: Rebuild continuous auricle and lid-only eye shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.8
+          SRC=production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.7.blend
+          BASE=production/pawn_protagonist/modeling/checkpoints/pawn-face-retopo-v0.0.4.blend
+          test -s "$SRC"; test -s "$BASE"
+          mkdir -p "$OUT"
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" --background "$SRC" --python production/pawn_protagonist/modeling/head_refinement_v0008.py -- "$SRC" "$BASE" "$OUT"
+          test -s "$OUT/pawn-head-shapes-v0.0.8.blend"
+          for a in front profile threequarter face-detail ear-detail; do test -s "$OUT/pawn-head-shapes-v0.0.8-$a.png"; done
+          python - <<'PY'
+          import json
+          with open("production/pawn_protagonist/build/face-v0.0.8/report.json") as f: r=json.load(f)
+          assert r["version"]=="0.0.8"
+          assert r["eye_objects"]==[] and r["eye_policy"]=="stone outline only, no eyeballs"
+          assert r["head_vertices"]==12076 and r["approved"] is False
+          assert r["max_displacement_m"]<0.030
+          assert r["modified_vertices"]["ear_reset_and_sculpt"]>100
+          PY
+      - name: Publish Blender checkpoint and real renders
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=production/pawn_protagonist/build/face-v0.0.8
+          cp "$OUT/pawn-head-shapes-v0.0.8.blend" production/pawn_protagonist/modeling/checkpoints/
+          cp "$OUT"/*.png production/pawn_protagonist/renders/
+          cp "$OUT/report.json" production/pawn_protagonist/renders/face-v0.0.8-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add production/pawn_protagonist/modeling/checkpoints/pawn-head-shapes-v0.0.8.blend production/pawn_protagonist/renders
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish actual Pawn head v0.0.8 ear rebuild and renders"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pawn-head-shapes-v0.0.8-model-renders
+          path: production/pawn_protagonist/build/face-v0.0.8/*
+          retention-days: 30
