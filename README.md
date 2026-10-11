@@ -2,7 +2,7 @@
 
 The previously produced Pawn protagonist Blender models, exported GLB assets, modeling scripts, preview renders, obsolete GitHub Actions modeling pipelines, and legacy v0.5 archive have been **removed from the current `main` branch**.
 
-There are currently **no active 3D models or Blender workflows** in the repository.
+There are currently **no active 3D models** in the repository. The reusable [Blender Tool](.github/workflows/cherpg-blender-tool.yml) is available for Blender 5.2.2 runtime validation and future modeling scripts, independent of the deleted model files.
 
 ## Retained design requirements
 
@@ -12,5 +12,7 @@ There are currently **no active 3D models or Blender workflows** in the reposito
 - The `production/pawn_protagonist/` placeholder directory structure
 
 The original approved pawn hero illustration (and later 3-part/10-view references) remains the design reference in the conversation; the reference folder currently contains only a placeholder README, not an uploaded image.
+
+**Note:** The Blender runtime tool is restored, but deleted .blend/.glb models, their renders, and model-specific scripts are not restored.
 
 **Note:** GitHub commit history is not rewritten by this cleanup. Previously committed files may still be retrieved from older revisions. This reset removes those files from the active `main` working tree.
