@@ -1,18 +1,16 @@
-# CheRPG
+# CheRPG — Pawn Hero modeling reset
 
-Godot-based Chess RPG project. This repository is being reorganized for a **new Pawn protagonist model built from scratch**.
+The previously produced Pawn protagonist Blender models, exported GLB assets, modeling scripts, preview renders, obsolete GitHub Actions modeling pipelines, and legacy v0.5 archive have been **removed from the current `main` branch**.
 
-## Active production
-- `production/pawn_protagonist/`: new character modeling pipeline. No model is approved yet.
-- `docs/character_rebuild.md`: modeling milestones and acceptance checks.
+There are currently **no active 3D models or Blender workflows** in the repository.
 
-## Previous experimental pipeline
-All historical v0.5.x source models, Blender scripts, images and rigging artifacts are kept unchanged (identical Git blobs) in `archive/legacy-v0.5/`.
+## Retained design requirements
 
-Old Actions workflows were moved out of `.github/workflows/` to `archive/legacy-v0.5/workflows/` to prevent accidental reruns or stale commits. This is a deliberate reset, not loss of history. No legacy facial topology is to be reused as the new master.
+- [Locked PAWN HERO design and modular parts contract](docs/pawn_hero_modular_head_contract_v0012.md)
+- [Modeling quality requirements and fresh start](docs/character_rebuild.md)
+- `production/pawn_protagonist/references/` — reserved for the illustration and turnarounds
+- The `production/pawn_protagonist/` placeholder directory structure
 
-## Next steps
-1. Put the approved original illustration in `production/pawn_protagonist/references/`.
-2. Block out head silhouette from front and side.
-3. Approve front, profile and 3/4 views before designing eyes, mouth, or accessories.
-4. Add rigging and Godot import only after facial proportions are accepted.
+The original approved pawn hero illustration (and later 3-part/10-view references) remains the design reference in the conversation; the reference folder currently contains only a placeholder README, not an uploaded image.
+
+**Note:** GitHub commit history is not rewritten by this cleanup. Previously committed files may still be retrieved from older revisions. This reset removes those files from the active `main` working tree.
