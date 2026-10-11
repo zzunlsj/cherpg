@@ -1,0 +1,123 @@
+name: CheRPG Blender Tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cherpg-blender-tool.yml'
+      - 'tools/blender/probe.py'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'check or run_script'
+        type: choice
+        options: [check, run_script]
+        default: check
+        required: true
+      script_path:
+        description: 'Relative .py file in approved modeling or tools/blender/scripts directory'
+        type: string
+        default: ''
+        required: false
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        default: check
+        required: false
+      script_path:
+        type: string
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  blender:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Blender 5.2.2 cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cherpg-blender/blender-5.2.2-linux-x64
+          key: blender-5.2.2-linux-x64
+
+      - name: Install headless libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libgl1-mesa-dri libx11-6 libxext6 libxi6 \
+            libxfixes3 libxrender1 libxxf86vm1 libxkbcommon0 xvfb
+
+      - name: Ensure Blender is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.cache/cherpg-blender"
+          BIN="$ROOT/blender-5.2.2-linux-x64/blender"
+          if [ ! -x "$BIN" ]; then
+            mkdir -p "$ROOT"
+            curl --fail --location --retry 3 --retry-delay 5 \
+              -o "$RUNNER_TEMP/blender-5.2.2.tar.xz" \
+              https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz
+            tar -xJf "$RUNNER_TEMP/blender-5.2.2.tar.xz" -C "$ROOT"
+          fi
+          "$BIN" --background --version | head -n 4
+          echo "BLENDER_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Check runtime or run explicitly supplied Blender Python script
+        shell: bash
+        env:
+          CHERPG_ACTION: ${{ inputs.action || 'check' }}
+          CHERPG_SCRIPT: ${{ inputs.script_path || '' }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/cherpg-blender-results"
+          mkdir -p "$OUT"
+          if [ "$CHERPG_ACTION" = "check" ]; then
+            SCRIPT="tools/blender/probe.py"
+          elif [ "$CHERPG_ACTION" = "run_script" ]; then
+            SCRIPT="$CHERPG_SCRIPT"
+            if [[ "$SCRIPT" == *".."* || "$SCRIPT" == /* ]]; then
+              echo "::error::Unsafe script path"
+              exit 1
+            fi
+            if [[ "$SCRIPT" != production/pawn_protagonist/modeling/*.py &&
+                  "$SCRIPT" != tools/blender/scripts/*.py ]]; then
+              echo "::error::Only approved modeling script paths allowed"
+              exit 1
+            fi
+          else
+            echo "::error::Invalid action"
+            exit 1
+          fi
+          test -f "$SCRIPT"
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a "$BLENDER_BIN" \
+            --background --factory-startup --python "$SCRIPT" -- "$OUT" \
+            2>&1 | tee "$OUT/blender-tool.log"
+          test -s "$OUT/blender-tool.log"
+          if [ "$CHERPG_ACTION" = "check" ]; then
+            test -s "$OUT/blender-tool-health.json"
+            python3 - <<'PY'
+          import json, os, pathlib
+          f = pathlib.Path(os.environ["RUNNER_TEMP"]) / "cherpg-blender-results" / "blender-tool-health.json"
+          data = json.loads(f.read_text())
+          assert data["status"] == "ok" and data["glb_export_available"], data
+          print("Blender tooling verified; no model restored.")
+          PY
+          fi
+
+      - name: Upload tool result (no repository model commits)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cherpg-blender-tool-result
+          path: ${{ runner.temp }}/cherpg-blender-results/
+          if-no-files-found: warn
+          retention-days: 14
