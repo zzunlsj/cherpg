@@ -101,6 +101,13 @@ var stone: StandardMaterial3D
 var ivory: StandardMaterial3D
 var iron: StandardMaterial3D
 var dark: StandardMaterial3D
+# Collision envelopes cover each visible primitive part (not only the torso).
+# Area3D proxies enable body/world contact queries without accidentally
+# welding articulated limbs to CharacterBody3D's main collision shape.
+var part_probes: Array[Dictionary] = []
+var safe_joint_pose: Array[Vector3] = []
+var collision_corrections := 0
+var ground_contact_normal := Vector3.UP
 
 func _ready() -> void:
 	name = "PawnCharacterBody"
@@ -125,6 +132,8 @@ func _ready() -> void:
 	avatar.name = "PrimitivePawnVisual"
 	add_child(avatar)
 	_build_primitive_body()
+	_create_part_collision_proxies(avatar)
+	_record_safe_joint_pose()
 	device = preload("res://scripts/direction_device.gd").new()
 	device.name = "FourAnchorWaistDevice"
 	add_child(device)
@@ -607,6 +616,8 @@ func _physics_process(delta: float) -> void:
 	_apply_attack_pose(delta)
 	_clamp_anatomical_joints()
 	avatar.scale.y = lerpf(1.0,0.67,crouch_blend)
+	_apply_terrain_pose(delta)
+	_prevent_part_penetration(delta)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
 
@@ -775,6 +786,163 @@ func _clamp_anatomical_joints() -> void:
 	avatar.rotation.x = clampf(avatar.rotation.x,-0.38,0.18)
 	avatar.rotation.z = clampf(avatar.rotation.z,-0.10,0.10)
 
+
+func _moving_joints() -> Array[Node3D]:
+	var joints: Array[Node3D] = []
+	joints.append_array(upper_leg)
+	joints.append_array(knee)
+	joints.append_array(feet)
+	joints.append_array(shoulder)
+	joints.append_array(elbow)
+	return joints
+
+func _record_safe_joint_pose() -> void:
+	safe_joint_pose.clear()
+	for joint in _moving_joints():
+		safe_joint_pose.append(joint.rotation)
+
+func _create_part_collision_proxies(root: Node) -> void:
+	# Every visual MeshInstance3D gets its own moving collision envelope.
+	# Contact proxies are Area3D, with collisions inspected and corrected
+	# explicitly; they do not replace the root CharacterBody3D capsule.
+	var children: Array[Node] = root.get_children()
+	for child in children:
+		if child is MeshInstance3D:
+			var mesh_part: MeshInstance3D = child as MeshInstance3D
+			if mesh_part.mesh == null:
+				continue
+			var bounds: AABB = mesh_part.mesh.get_aabb()
+			var size: Vector3 = bounds.size * mesh_part.scale.abs()
+			var body_shape := BoxShape3D.new()
+			# Avoid false positives at hinge joints while still tracing
+			# the physical shape of each rendered primitive segment.
+			body_shape.size = Vector3(maxf(.012,size.x*.87),maxf(.012,size.y*.87),maxf(.012,size.z*.87))
+			var area := Area3D.new()
+			area.name = "PartContact_" + mesh_part.name
+			area.collision_layer = 4
+			area.collision_mask = 1 | 4
+			area.monitorable = true
+			area.monitoring = true
+			mesh_part.get_parent().add_child(area)
+			var center: Vector3 = bounds.get_center()
+			area.transform = Transform3D(mesh_part.transform.basis.orthonormalized(),
+				mesh_part.transform * center)
+			var coll := CollisionShape3D.new()
+			coll.name = "CollisionEnvelope"
+			coll.shape = body_shape
+			area.add_child(coll)
+			part_probes.append({"part":mesh_part,"area":area,"shape":body_shape,"name":str(mesh_part.name)})
+		elif child is Node3D:
+			_create_part_collision_proxies(child)
+
+func _parts_are_connected(a: String, b: String) -> bool:
+	# Neighbouring segments share an intentional joint and MAY touch.
+	if a == b:
+		return true
+	if a.begins_with("HEAD_") and b.begins_with("HEAD_"):
+		return true
+	var l_a: bool = a.begins_with("BODY_L_")
+	var l_b: bool = b.begins_with("BODY_L_")
+	var r_a: bool = a.begins_with("BODY_R_")
+	var r_b: bool = b.begins_with("BODY_R_")
+	if (l_a and l_b) or (r_a and r_b):
+		return true
+	var base_a: bool = not l_a and not r_a
+	var base_b: bool = not l_b and not r_b
+	if base_a and base_b:
+		return true
+	if a.contains("UpperArm") and base_b or b.contains("UpperArm") and base_a:
+		return true
+	if a.contains("Shoulder") and base_b or b.contains("Shoulder") and base_a:
+		return true
+	if a.contains("Thigh") and base_b or b.contains("Thigh") and base_a:
+		return true
+	return false
+
+func _part_penetrates_world_or_self(probe: Dictionary) -> bool:
+	var area: Area3D = probe["area"]
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe["shape"]
+	query.transform = area.global_transform
+	query.margin = .001
+	query.collision_mask = 1 | 4
+	query.collide_with_bodies = true
+	query.collide_with_areas = true
+	query.exclude = [get_rid(),area.get_rid()]
+	var contacts: Array[Dictionary] = get_world_3d().direct_space_state.intersect_shape(query,32)
+	for hit in contacts:
+		var object: Object = hit.get("collider")
+		if not is_instance_valid(object):
+			continue
+		if object is Area3D:
+			var other_area: Area3D = object as Area3D
+			if not other_area.name.begins_with("PartContact_"):
+				continue
+			var other_name: String = str(other_area.name).trim_prefix("PartContact_")
+			if _parts_are_connected(str(probe["name"]),other_name):
+				continue
+			return true
+		if object is StaticBody3D:
+			var name: String = str(probe["name"])
+			# Foot and lower-leg ground contact is intentional. The ankle
+			# probe independently limits the amount of ground penetration.
+			if (name.ends_with("_Foot") or name.ends_with("_Shin")) and is_on_floor():
+				continue
+			return true
+	return false
+
+func _prevent_part_penetration(delta: float) -> void:
+	# Pose-level collision solver: reject newly intersecting limb rotations
+	# by blending back toward the last collision-safe articulated pose.
+	# Unlike passive overlap alerts, this changes the rendered joint pose.
+	var joints := _moving_joints()
+	if safe_joint_pose.size() != joints.size():
+		_record_safe_joint_pose()
+	for retry in range(3):
+		var unsafe := false
+		for probe in part_probes:
+			if _part_penetrates_world_or_self(probe):
+				unsafe = true
+				break
+		if not unsafe:
+			_record_safe_joint_pose()
+			return
+		collision_corrections += 1
+		for i in range(joints.size()):
+			joints[i].rotation = joints[i].rotation.lerp(safe_joint_pose[i],.50 + .24*float(retry))
+		_clamp_anatomical_joints()
+	# Last safe pose is preferred over an intersecting animation frame.
+	for i in range(joints.size()):
+		joints[i].rotation = safe_joint_pose[i]
+
+func _apply_terrain_pose(delta: float) -> void:
+	# Probe both feet independently, including beneath slopes and stairs.
+	# The physics capsule remains authoritative for whole-body movement.
+	if mantle_active or climbing or not is_on_floor():
+		return
+	var space := get_world_3d().direct_space_state
+	var lift_required := 0.0
+	for i in range(feet.size()):
+		var sole: Vector3 = feet[i].to_global(Vector3(0,-.098,-.050))
+		var query := PhysicsRayQueryParameters3D.create(sole+Vector3.UP*.46,sole+Vector3.DOWN*.75,1,[get_rid()])
+		var contact: Dictionary = space.intersect_ray(query)
+		if contact.is_empty():
+			continue
+		var n: Vector3 = contact["normal"]
+		if n.y < .25:
+			continue
+		var difference: float = contact["position"].y - sole.y
+		# Swing foot may be raised by the animation; do not pull it down.
+		if difference > .008:
+			lift_required = maxf(lift_required,minf(difference,.072))
+			knee[i].rotation.x = maxf(-MAX_KNEE_FLEX_RAD,knee[i].rotation.x-minf(difference*.80,.14))
+		var local_normal: Vector3 = avatar.global_transform.basis.inverse()*n
+		var ground_pitch: float = clampf(-atan2(local_normal.z,maxf(.2,local_normal.y)),-.34,.34)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,clampf(ground_pitch-feet[i].get_parent().rotation.x*.12,-.5,.48),minf(1.0,delta*9.0))
+	if lift_required > .0:
+		# Lift visual rig only; never teleport the physics root through solids.
+		avatar.position.y += minf(.055,lift_required)*minf(1.0,delta*16.0)
+
 func _apply_attack_pose(delta: float) -> void:
 	# Left-click input from pawn_player.cs: right arm swings once, retriggerable.
 	attack_timer = maxf(0.0, attack_timer - delta)
@@ -824,3 +992,4 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	avatar.position = Vector3.ZERO
 	avatar.rotation = Vector3.ZERO
 	device.call("instant_stow")
+	_record_safe_joint_pose()
