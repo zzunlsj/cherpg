@@ -50,6 +50,10 @@ func _build_terrain() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = TINTS[lane_index]
 	mat.roughness = 1.0
+	# A heightfield is an open triangle surface: render both sides so the ground
+	# remains visible from the player's elevated/top-down camera as well as below.
+	# This affects rendering only; the existing two-sided collision stays intact.
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.material_override = mat
 	add_child(mi)
 	var collision := CollisionShape3D.new()
