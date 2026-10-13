@@ -1,0 +1,17 @@
+; CheRPG standalone locomotion / direction-device lab. Godot 4.5.2
+config_version=5
+
+[application]
+config/name="CheRPG | Terrain Motion + Rotation Lab 0.0.5v"
+run/main_scene="res://scenes/MotionLab.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1400
+window/size/viewport_height=860
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
