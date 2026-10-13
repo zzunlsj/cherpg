@@ -2,13 +2,14 @@ extends CharacterBody3D
 ## A separate Godot implementation of the retained primitive-only 1.55 m Pawn.
 ## Deliberately uses no sculpted face, textures or reworked hero silhouette.
 # Adapted from the user-provided Unity Rigidbody2D pawn_player.cs.
-# Only the heading axis is kept: this is a chess Pawn, not free 4-way strafing.
+# The Pawn moves freely inside a tile; voluntary crossing obeys chess heading.
 # Source input smoothing: Mathf.MoveTowards(current, raw, delta * 10).
 # Source speed caps: 4.0 walk; 4.0 * 1.5 = 6.0 sprint.
 # Source force model: force=20000, sprint x2, strong release braking.
 # Unity's AddForce(force * fixedDeltaTime) uses an EXTRA timestep; direct
 # numeric port to CharacterBody3D would be mass/step dependent. Expose an
 # intentionally calibrated acceleration instead, preserving the response shape.
+const BOARD_RULES = preload("res://scripts/board_rules.gd")
 const INPUT_SMOOTHING_PER_SEC := 10.0
 const WALK_MPS := 4.0
 const RUN_MPS := 6.0
@@ -38,6 +39,11 @@ var floor_deg := 0.0
 var slope_sign := 0.0
 var gait_clock := 0.0
 var smoothed_input := 0.0
+var smoothed_strafe := 0.0
+var board_origin: Vector3 = Vector3.ZERO
+var current_cell: Vector2i = Vector2i.ZERO
+var resistance_time := 0.0
+var resistance_attempts := 0
 var latest_axis := 0.0
 var latest_sprint := false
 var jump_buffer_left := 0.0
@@ -195,10 +201,12 @@ func _horizontal_velocity() -> Vector3:
 
 ## Independent testable planar physics adapter for the Unity movement feel.
 ## Godot move_and_slide() will handle final collider response after this update.
-func _source_feel_horizontal(current: Vector3, axis: float, sprint: bool, delta: float, floor: bool, slope_multiplier: float) -> Vector3:
+func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bool, delta: float, floor: bool, slope_multiplier: float) -> Vector3:
 	var speed_cap: float = (RUN_MPS if sprint else WALK_MPS) * slope_multiplier
-	var intended: Vector3 = HEADINGS[heading_index] * axis
-	var magnitude: float = absf(axis)
+	var forward: Vector3 = HEADINGS[heading_index]
+	var right: Vector3 = forward.cross(Vector3.UP)
+	var intended: Vector3 = (right * input_vector.x + forward * input_vector.y).limit_length(1.0)
+	var magnitude: float = minf(1.0, input_vector.length())
 	var push: float = GROUND_PUSH_ACCEL if floor else AIR_PUSH_ACCEL
 	if sprint:
 		push *= SOURCE_SPRINT_FORCE_MULT
@@ -227,19 +235,25 @@ func _physics_process(delta: float) -> void:
 	var was_on_floor: bool = is_on_floor()
 	var fwd: float = float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
 	var back: float = float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
+	var left: float = float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
+	var right: float = float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT))
 	var raw_axis: float = fwd - back
+	var raw_strafe: float = right - left
 	var device_busy: bool = bool(device.call("is_busy"))
 	if device_busy:
 		raw_axis = 0.0
+		raw_strafe = 0.0
 	smoothed_input = move_toward(smoothed_input, raw_axis, INPUT_SMOOTHING_PER_SEC * delta)
-	var axis: float = smoothed_input
-	# Grounding operation must immobilize the pawn even while input decays.
+	smoothed_strafe = move_toward(smoothed_strafe, raw_strafe, INPUT_SMOOTHING_PER_SEC * delta)
+	# Free bodily motion within a tile; tile crossing remains a world rule.
+	var input_vector := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
 	if device_busy:
-		axis = 0.0
-	var wants_run: bool = Input.is_key_pressed(KEY_SHIFT) and not is_zero_approx(raw_axis)
-	latest_axis = axis
+		input_vector = Vector2.ZERO
+	var wants_run: bool = Input.is_key_pressed(KEY_SHIFT) and (not is_zero_approx(raw_axis) or not is_zero_approx(raw_strafe))
+	latest_axis = input_vector.y
 	latest_sprint = wants_run
-	var direction: Vector3 = HEADINGS[heading_index] * signf(axis)
+	var forward: Vector3 = HEADINGS[heading_index]
+	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
 
 	if was_on_floor:
 		ground_normal = get_floor_normal()
@@ -276,13 +290,35 @@ func _physics_process(delta: float) -> void:
 	# Terrain changes only speed cap, not the original input ramp/brake shape.
 	var slope_factor: float = 1.0-clampf(uphill*0.65,-0.10,0.26)
 	var current_horizontal: Vector3 = _horizontal_velocity()
-	var next_horizontal := _source_feel_horizontal(current_horizontal, axis, wants_run, delta, was_on_floor, slope_factor)
-	# Release safely to a stop on a grounded, locked direction device.
+
+	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, wants_run, delta, was_on_floor, slope_factor)
 	if device_busy:
 		next_horizontal = Vector3.ZERO
+	var starting_position: Vector3 = global_position
+	var prediction: Dictionary = BOARD_RULES.constrain_voluntary(starting_position, starting_position + next_horizontal * delta, board_origin, heading_index)
+	var projected_pos: Vector3 = prediction["position"]
+	next_horizontal = (projected_pos - starting_position) / maxf(delta, 0.000001)
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
 	move_and_slide()
+	# Physical collision resolution and airborne drift must obey the same rule.
+	var resolved: Dictionary = BOARD_RULES.constrain_voluntary(starting_position, global_position, board_origin, heading_index)
+	var allowed_position: Vector3 = resolved["position"]
+	var resisted: bool = bool(prediction["resisted"]) or bool(resolved["resisted"])
+	if bool(resolved["blocked_x"]):
+		global_position.x = allowed_position.x
+		velocity.x = 0.0
+	if bool(resolved["blocked_z"]):
+		global_position.z = allowed_position.z
+		velocity.z = 0.0
+	if resisted:
+		resistance_time = 0.24
+		resistance_attempts += 1
+	else:
+		resistance_time = maxf(0.0, resistance_time - delta)
+	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
+	_update_body_facing(delta, _horizontal_velocity(), device_busy)
+
 	# Resolve landing on the current physics tick, not only on the next tick.
 	if is_on_floor() and jump_state != "GROUNDED":
 		if airborne_time > 0.055:
@@ -290,7 +326,7 @@ func _physics_process(delta: float) -> void:
 		jump_state = "GROUNDED"
 	if not is_on_floor():
 		move_state = "JUMP" if velocity.y > 0.05 else "FALL"
-	elif _horizontal_velocity().length() < 0.12 and absf(axis) < SOURCE_MIN_FORCE:
+	elif _horizontal_velocity().length() < 0.12 and input_vector.length() < SOURCE_MIN_FORCE:
 		move_state = "IDLE"
 	elif wants_run:
 		move_state = "RUN"
@@ -299,11 +335,29 @@ func _physics_process(delta: float) -> void:
 
 	var horizontal_speed: float = Vector2(get_real_velocity().x,get_real_velocity().z).length()
 	if is_on_floor():
-		_update_gait(delta,horizontal_speed,wants_run,axis)
+		_update_gait(delta,horizontal_speed,wants_run,input_vector.length())
 	else:
 		_update_air_pose(delta)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
+
+func _update_body_facing(delta: float, horizontal: Vector3, busy: bool) -> void:
+	# Body yaw is physically free; chess heading_index is separate.
+	if busy or horizontal.length() < 0.17:
+		return
+	var yaw: float = atan2(-horizontal.x, -horizontal.z)
+	avatar.rotation.y = lerp_angle(avatar.rotation.y, yaw, minf(1.0, delta * 9.0))
+
+func rotate_body_only(degrees: float) -> void:
+	avatar.rotation.y += deg_to_rad(degrees)
+
+func apply_forced_displacement(delta_world: Vector3) -> void:
+	# External motion (knockback, traps) bypasses voluntary move restrictions.
+	# Still collide with solids and do NOT change the chess heading.
+	if delta_world.length_squared() <= 0.0:
+		return
+	move_and_collide(delta_world)
+	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 
 func _update_air_pose(delta: float) -> void:
 	# Separate primitive-joint animation: tucked ascent, extended descent.
@@ -345,6 +399,12 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	global_position = Vector3(world_x, base_y + 0.12, world_z)
 	velocity = Vector3.ZERO
 	lane_index = index
+	heading_index = 0
+	board_origin = Vector3(world_x, 0.0, world_z)
+	current_cell = Vector2i.ZERO
+	resistance_time = 0.0
+	resistance_attempts = 0
+	smoothed_strafe = 0.0
 	gait_clock = 0.0
 	smoothed_input = 0.0
 	latest_axis = 0.0
