@@ -75,7 +75,7 @@ func _build_ui() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	bg.offset_left = 20.0
 	bg.offset_top = 20.0
-	bg.custom_minimum_size = Vector2(740.0,195.0)
+	bg.custom_minimum_size = Vector2(790.0,228.0)
 	hud.add_child(bg)
 	var content := VBoxContainer.new()
 	bg.add_child(content)
@@ -222,12 +222,13 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.18v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.19v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "CAMERA: %.0f°/90° | ARM: %.2f/%.2fm (%s) | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),camera_actual_distance,camera_distance,("WALL" if camera_wall_blocked else "CLEAR"),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
 		+ "TILE: (%d,%d) | MOVE LIMIT: %s | F: %s | STANCE: %s | RUN: %s\n" % [pawn.current_cell.x,pawn.current_cell.y,("ON / "+rule_status if board_rules_enabled else "OFF"),pawn.device.preview_reason,("CROUCH" if pawn.crouching else "STAND"),("YES" if pawn.running else "NO")] \
-		+ "MANTLE: %s | GRIP: %s | WALL INPUT: (%.1f,%.1f) | PARTS: %d | POSE FIXES: %d" % [pawn.mantle_stage,("HOLD" if pawn.climbing and pawn.climb_input.length_squared() < .001 else ("MOVE" if pawn.climbing else "OFF")),pawn.climb_input.x,pawn.climb_input.y,pawn.part_probes.size(),pawn.collision_corrections]
+		+ "MANTLE: %s | GRIP: %s | WALL INPUT: (%.1f,%.1f) | PARTS: %d | POSE FIXES: %d" % [pawn.mantle_stage,("HOLD" if pawn.climbing and pawn.climb_input.length_squared() < .001 else ("MOVE" if pawn.climbing else "OFF")),pawn.climb_input.x,pawn.climb_input.y,pawn.part_probes.size(),pawn.collision_corrections] \
+		+ "\nUnity C# input=(%.2f,%.2f) | force=(%.1f,%.1f) | anim speed=%.2fm/s" % [pawn.source_fixed_input_vec.x,pawn.source_fixed_input_vec.y,pawn.source_force_vec.x,pawn.source_force_vec.y,pawn.source_anim_speed]
 
 func _run_smoke_test() -> void:
 	# User invoked via --smoke-test. Short structure-only check; no long playtest.
