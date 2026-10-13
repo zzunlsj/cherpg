@@ -528,7 +528,7 @@ func _update_climb_pose(delta: float) -> void:
 	for i in range(2):
 		var phase: float = gait_clock + (0.0 if i == 0 else PI)
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,.40 + .33*sin(phase),blend)
-		knee[i].rotation.x = lerpf(knee[i].rotation.x,.78 + .17*cos(phase),blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,-(.78 + .17*cos(phase)),blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,-.20,blend)
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-1.05 + .25*sin(phase+PI),blend)
 	avatar.rotation.x = lerpf(avatar.rotation.x,-.12 - .22 * (1.0-climb_normal.y),blend)
@@ -546,7 +546,7 @@ func _update_air_pose(delta: float) -> void:
 		var knee_target: float = (0.70 - 0.10 * ascent) if rising else 0.28 + 0.22 * descent
 		var arm_target: float = (-0.48 + 0.15 * ascent) if rising else 0.13 + 0.12 * descent
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, hip_target, smooth)
-		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_target, smooth)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x, -absf(knee_target), smooth)
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, arm_target, smooth)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x, -0.22 if rising else 0.12, smooth)
 		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z, lead * 0.10, smooth)
@@ -619,7 +619,7 @@ func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: fl
 		var knee_target: float = (joints.y + uphill * 0.16 + downhill * 0.06) * activity
 		var foot_target: float = (joints.z - uphill * 0.08) * activity
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,thigh,blend)
-		knee[i].rotation.x = lerpf(knee[i].rotation.x,knee_target,blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,-absf(knee_target),blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,foot_target,blend)
 		# Right arm moves forward with left thigh (counter-swing).
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-thigh * .68,blend)
@@ -633,6 +633,40 @@ func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: fl
 	avatar.rotation.z = lerpf(avatar.rotation.z,.025 * cos(phase * TAU) * activity,minf(1.0,delta * 7.0))
 	avatar.position.y = lerpf(avatar.position.y,bob+compression,minf(1.0,delta * 13.0))
 
+
+
+func _update_crouch_pose(delta: float, horizontal_speed: float, axis: float) -> void:
+	# Anatomical knee hinge: X-negative folds shin toward the rear (+Z).
+	# Never bend the knee through the front of the shin.
+	var blend: float = minf(1.0,delta*12.0)
+	var crawl_activity: float = clampf(horizontal_speed/CROUCH_MPS,0.0,1.0) * clampf(axis*2.0,0.0,1.0)
+	if crawl_activity > 0.02:
+		gait_clock = fposmod(gait_clock+TAU*.82*delta,TAU)
+	for i in range(2):
+		var phase: float = gait_clock+(0.0 if i==0 else PI)
+		var phase_swing: float = sin(phase)*crawl_activity
+		var hip_target: float = 0.36 + 0.12*phase_swing
+		var flex_target: float = -(0.91 + 0.12*maxf(0.0,phase_swing))
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,hip_target,blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,flex_target,blend)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,0.19,blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-0.23 - 0.08*phase_swing,blend)
+	avatar.rotation.x = lerpf(avatar.rotation.x,0.09,blend)
+	avatar.rotation.z = lerpf(avatar.rotation.z,0.01*sin(gait_clock)*crawl_activity,blend)
+	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
+
+func _clamp_anatomical_joints() -> void:
+	# The shin mesh extends down from its knee pivot. In this rig a
+	# NEGATIVE X knee rotation means bending BACK, toward the heel.
+	# Prevent hyperextension/reverse knees in ALL poses, even after blending.
+	for i in range(2):
+		knee[i].rotation.x = clampf(knee[i].rotation.x,-MAX_KNEE_FLEX_RAD,0.0)
+		upper_leg[i].rotation.x = clampf(upper_leg[i].rotation.x,-0.85,0.85)
+		feet[i].rotation.x = clampf(feet[i].rotation.x,-0.50,0.48)
+		shoulder[i].rotation.x = clampf(shoulder[i].rotation.x,-1.60,1.20)
+		shoulder[i].rotation.z = clampf(shoulder[i].rotation.z,-0.28,0.28)
+	avatar.rotation.x = clampf(avatar.rotation.x,-0.38,0.18)
+	avatar.rotation.z = clampf(avatar.rotation.z,-0.10,0.10)
 
 func _apply_attack_pose(delta: float) -> void:
 	# Left-click input from pawn_player.cs: right arm swings once, retriggerable.
