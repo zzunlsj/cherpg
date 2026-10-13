@@ -22,12 +22,14 @@ func _ready() -> void:
 		lanes.append(lane)
 	pawn = PAWN_SCRIPT.new()
 	add_child(pawn)
-	pawn.call("reset_at",float(0-2)*8.5,0.0,9.3,0)
 	camera = Camera3D.new()
 	camera.name = "FollowCamera"
 	camera.fov = 65.0
 	camera.current = true
 	add_child(camera)
+	pawn.set_movement_camera(camera)
+	# Use the selected lane terrain height for initial spawn and resets.
+	_teleport_to_lane(0)
 	_build_ui()
 	camera_target = pawn.global_position+Vector3.UP*1.1
 	_update_camera(1.0)
@@ -68,7 +70,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "W/S + A/D: MOVE FREELY IN TILE | crossing tiles: heading FORWARD ONLY\nShift: run | Space: variable jump (same board rule) | 1-5: test terrain\nR: deploy | E: heading +90 deg | Q: stow | Z/C: body-only turn | F1: board debug | T: reset\nMouse: orbit camera | Esc: capture/release | forced motion not bound to a key"
+	help_label.text = "WASD: CAMERA-RELATIVE MOVE (W = camera forward) | tile exit: Pawn heading only\nShift: run | Space: variable jump (same board rule) | 1-5: test terrain\nR: deploy | E: heading +90 deg | Q: stow | Z/C: body-only turn | F1: board debug | T: reset\nMouse: orbit camera | Esc: capture/release | forced motion not bound to a key"
 	help_label.add_theme_font_size_override("font_size",15)
 	content.add_child(help_label)
 	_update_hud()
@@ -141,7 +143,7 @@ func _update_hud() -> void:
 	if pawn == null or info == null:
 		return
 	var lane_name: String = ["FLAT", "8 DEG SLOPE", "15 DEG SLOPE", "UNEVEN", "30 DEG LIMIT"][pawn.lane_index]
-	info.text = "CheRPG | CANON-ALIGNED INDEPENDENT TEST MAP 0.0.7v\n" \
+	info.text = "CheRPG | CANON-ALIGNED CAMERA MOVEMENT LAB 0.0.9v\n" \
 		+ "LANE %d/5: %s | MOVE: %s | FLOOR: %.1f deg\n" % [pawn.lane_index+1,lane_name,pawn.move_state,pawn.floor_deg] \
 		+ "BODY YAW: %.0f deg | CHESS HEADING: %s\n" % [rad_to_deg(pawn.avatar.rotation.y), pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | COUNT: %d | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.jump_count,pawn.device.call("phase_name"),pawn.device.reason] \
