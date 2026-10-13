@@ -74,7 +74,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "WASD: camera movement | Ctrl (hold): RUN / CLIMB grabbable 30°+ surfaces\nShift (hold): CROUCH | I: movement constraints ON/OFF (tile pattern stays visible)\nHold F: anchor clearance preview | Release F: install/stow | Anchored A/D: turn heading\nO: reset | Space: jump | 1-9,0: stations | Mouse: orbit | Esc: cursor"
+	help_label.text = "WASD: camera movement | Ctrl + W: grab/ascend a 30°+ marked wall\nClimbing + Ctrl: HOLD | W/S: UP/DOWN | A/D: SIDEWAYS (fixed wall axes, no camera steering)\nShift: CROUCH | I: chess movement limits ONLY | F hold: footprint / release: anchor\nO: reset | Space: jump | 1-9,0: stations | Mouse: 90° orbit | Esc: cursor"
 	help_label.add_theme_font_size_override("font_size",14)
 	content.add_child(help_label)
 	_update_hud()
@@ -169,12 +169,12 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.16v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.17v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "CAMERA: %.0f°/90° | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
 		+ "TILE: (%d,%d) | MOVE LIMIT: %s | F: %s | STANCE: %s | RUN: %s\n" % [pawn.current_cell.x,pawn.current_cell.y,("ON / "+rule_status if board_rules_enabled else "OFF"),pawn.device.preview_reason,("CROUCH" if pawn.crouching else "STAND"),("YES" if pawn.running else "NO")] \
-		+ "MANTLE: %s | PART COLLIDERS: %d | POSE CORRECTIONS: %d" % [pawn.mantle_stage,pawn.part_probes.size(),pawn.collision_corrections]
+		+ "MANTLE: %s | GRIP: %s | WALL INPUT: (%.1f,%.1f) | PARTS: %d | POSE FIXES: %d" % [pawn.mantle_stage,("HOLD" if pawn.climbing and pawn.climb_input.length_squared() < .001 else ("MOVE" if pawn.climbing else "OFF")),pawn.climb_input.x,pawn.climb_input.y,pawn.part_probes.size(),pawn.collision_corrections]
 
 func _run_smoke_test() -> void:
 	# User invoked via --smoke-test. Short structure-only check; no long playtest.
