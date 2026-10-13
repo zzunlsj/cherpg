@@ -101,6 +101,23 @@ func _create_ramp(index: int) -> void:
 		collider.shape = shape
 		collider.position = obj.position
 		add_child(collider)
+		# Small, safe landing deck behind the 90° vertical face.
+		# Upper surface exactly y=3.0m, overlapping wall's back side.
+		var deck_mesh := BoxMesh.new()
+		deck_mesh.size = Vector3(6.0,0.30,4.0)
+		var deck := MeshInstance3D.new()
+		deck.name = "VerticalWall3mTopLandingPlatform"
+		deck.mesh = deck_mesh
+		deck.position = Vector3(x,rise_m-0.15,RAMP_Z-2.3)
+		deck.material_override = _checker_material(Color("d8c9ae"),Color("aa967a"))
+		add_child(deck)
+		var deck_shape := BoxShape3D.new()
+		deck_shape.size = deck_mesh.size
+		var deck_collider := CollisionShape3D.new()
+		deck_collider.name = "VerticalWallTopLandingCollision"
+		deck_collider.position = deck.position
+		deck_collider.shape = deck_shape
+		add_child(deck_collider)
 		return
 	var half_w := 3.0
 	var z_front: float = RAMP_Z
