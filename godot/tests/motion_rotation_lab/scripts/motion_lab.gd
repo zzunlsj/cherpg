@@ -11,6 +11,7 @@ var camera_yaw := 0.0
 var camera_pitch := -0.19
 var camera_distance := 6.8
 var camera_target := Vector3.ZERO
+var grid_debug_visible := false
 
 func _ready() -> void:
 	_build_lighting()
@@ -67,7 +68,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "W/S or arrows: forward/back only | Shift: run | Space: variable jump\n1-5: switch terrain lane | R: deploy | E: change heading | Q: stow\nMouse: orbit camera | Esc: capture/release | T: reset current lane | Release Space early for short hop"
+	help_label.text = "W/S + A/D: MOVE FREELY IN TILE | crossing tiles: heading FORWARD ONLY\nShift: run | Space: variable jump (same board rule) | 1-5: test terrain\nR: deploy | E: heading +90 deg | Q: stow | Z/C: body-only turn | F1: board debug | T: reset\nMouse: orbit camera | Esc: capture/release | forced motion not bound to a key"
 	help_label.add_theme_font_size_override("font_size",15)
 	content.add_child(help_label)
 	_update_hud()
@@ -113,8 +114,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			pawn.device.call("request_turn")
 		KEY_Q:
 			pawn.device.call("request_stow")
+		KEY_Z:
+			pawn.rotate_body_only(-90.0)
+		KEY_C:
+			pawn.rotate_body_only(90.0)
 		KEY_T:
 			_teleport_to_lane(pawn.lane_index)
+		KEY_F1:
+			grid_debug_visible = not grid_debug_visible
+			for lane in lanes:
+				lane.call("set_board_debug_visible", grid_debug_visible)
 		KEY_ESCAPE:
 			var new_mode := Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 			Input.set_mouse_mode(new_mode)
@@ -132,11 +141,11 @@ func _update_hud() -> void:
 	if pawn == null or info == null:
 		return
 	var lane_name: String = ["FLAT", "8 DEG SLOPE", "15 DEG SLOPE", "UNEVEN", "30 DEG LIMIT"][pawn.lane_index]
-	info.text = "CheRPG | INDEPENDENT TEST MAP 0.0.6v\n" \
+	info.text = "CheRPG | CANON-ALIGNED INDEPENDENT TEST MAP 0.0.7v\n" \
 		+ "LANE %d/5: %s | MOVE: %s | FLOOR: %.1f deg\n" % [pawn.lane_index+1,lane_name,pawn.move_state,pawn.floor_deg] \
-		+ "CHESS HEADING: %s (body remains unchanged)\n" % pawn.HEADING_NAMES[pawn.heading_index] \
+		+ "BODY YAW: %.0f deg | CHESS HEADING: %s\n" % [rad_to_deg(pawn.avatar.rotation.y), pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | COUNT: %d | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.jump_count,pawn.device.call("phase_name"),pawn.device.reason] \
-		+ "INPUT: %.2f | XZ SPEED %.2f / CAP %.1f m/s" % [pawn.smoothed_input,Vector2(pawn.velocity.x,pawn.velocity.z).length(),(pawn.RUN_MPS if pawn.latest_sprint else pawn.WALK_MPS)]
+		+ "TILE: (%d,%d) | RULE: %s | INPUT: (%.2f,%.2f) | SPEED: %.2f m/s" % [pawn.current_cell.x, pawn.current_cell.y, ("RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"), pawn.smoothed_strafe, pawn.smoothed_input, Vector2(pawn.velocity.x,pawn.velocity.z).length()]
 
 func _run_smoke_test() -> void:
 	# Fail CI loudly on scene construction, ground generation or missing primitives.
