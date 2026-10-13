@@ -3,9 +3,10 @@ extends StaticBody3D
 ## modular slope blocks and terrain specimens sit ON TOP of the flat base.
 ## The chess-board overlay is an editor/test visualization, not visible canon.
 const BOARD_RULES = preload("res://scripts/board_rules.gd")
+# All obstacle surfaces are independent from the large flat floor.
 const WIDTH_M := 100.0
 const DEPTH_M := 100.0
-const TILE_M := 2.0
+const TILE_M := 4.0
 const RAMP_ANGLES := [8.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0]
 const RAMP_X := [-38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0]
 const RAMP_Z := 19.0
@@ -13,6 +14,9 @@ const SPAWN_X := [0.0, -38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0, -22.0, 20.0]
 const SPAWN_Z := [38.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, -18.0, -18.0]
 const GROUND_TOP_Y := 0.0
 var grid_material: ShaderMaterial
+var all_grid_materials: Array[ShaderMaterial] = []
+var board_grid_visible := true
+const CLIMBABLE_FROM_DEG := 30.0
 
 func setup() -> void:
 	name = "CheRPG_Flat100x100_WithSlopeTestStations"
@@ -33,19 +37,20 @@ render_mode cull_disabled, diffuse_burley;
 uniform vec4 pale : source_color = vec4(0.60,0.69,0.64,1.0);
 uniform vec4 deep : source_color = vec4(0.32,0.46,0.42,1.0);
 uniform float border_opacity : hint_range(0.0,1.0) = 0.92;
+uniform float board_visible : hint_range(0.0,1.0) = 1.0;
 varying vec3 world_pos;
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
-	// Cell center at coordinates (...,-4,-2,0,2,4...) in meters.
-	vec2 cell_uv = (world_pos.xz + vec2(1.0)) / 2.0;
+	// 4m x 4m chess grid aligned to (x,z)=(0,0) in the same world.
+	vec2 cell_uv = (world_pos.xz + vec2(2.0)) / 4.0;
 	float dark_tile = mod(floor(cell_uv.x) + floor(cell_uv.y), 2.0);
-	vec3 surface_color = mix(pale.rgb, deep.rgb, dark_tile);
+	vec3 surface_color = mix(pale.rgb, deep.rgb, dark_tile * board_visible);
 	vec2 d = min(fract(cell_uv), vec2(1.0) - fract(cell_uv));
 	float edge_m = min(d.x, d.y) * 2.0;
 	float outline = 1.0 - smoothstep(0.023,0.068,edge_m);
-	ALBEDO = mix(surface_color,vec3(0.09,0.11,0.13),outline * border_opacity);
+	ALBEDO = mix(surface_color,vec3(0.09,0.11,0.13),outline * border_opacity * board_visible);
 	ROUGHNESS = 1.0;
 }
 """
@@ -53,6 +58,8 @@ void fragment() {
 	material.shader = shader
 	material.set_shader_parameter("pale", light)
 	material.set_shader_parameter("deep", dark)
+	material.set_shader_parameter("board_visible", 1.0 if board_grid_visible else 0.0)
+	all_grid_materials.append(material)
 	return material
 
 func _create_flat_ground() -> void:
@@ -60,7 +67,7 @@ func _create_flat_ground() -> void:
 	var ground_mesh := BoxMesh.new()
 	ground_mesh.size = Vector3(WIDTH_M, 0.4, DEPTH_M)
 	var ground := MeshInstance3D.new()
-	ground.name = "100m_by_100m_OneFlatBase_50x50Tiles"
+	ground.name = "100m_by_100m_OneFlatBase_25x25Tiles"
 	ground.mesh = ground_mesh
 	ground.position = Vector3(0, -0.2, 0)
 	grid_material = _checker_material(Color("adbdaf"), Color("788e85"))
@@ -100,7 +107,13 @@ func _create_ramp(index: int) -> void:
 		shape.size = wall_size
 		collider.shape = shape
 		collider.position = obj.position
-		add_child(collider)
+		var wall_body := StaticBody3D.new()
+		wall_body.name = "Grabbable90degWall"
+		wall_body.collision_layer = 1
+		wall_body.collision_mask = 0
+		wall_body.add_to_group("cherpg_grabbable")
+		add_child(wall_body)
+		wall_body.add_child(collider)
 		# Small, safe landing deck behind the 90° vertical face.
 		# Upper surface exactly y=3.0m, overlapping wall's back side.
 		var deck_mesh := BoxMesh.new()
@@ -149,7 +162,16 @@ func _create_ramp(index: int) -> void:
 	var trimesh: ConcavePolygonShape3D = mesh2.create_trimesh_shape()
 	trimesh.backface_collision = true
 	coll.shape = trimesh
-	add_child(coll)
+	# Give each incline its own collider owner. The Pawn may climb ONLY
+	# surfaces tagged grabbable and at least 30 degrees from horizontal.
+	var slope_body := StaticBody3D.new()
+	slope_body.name = "SlopeBody_%02d" % int(angle)
+	slope_body.collision_layer = 1
+	slope_body.collision_mask = 0
+	if angle >= CLIMBABLE_FROM_DEG:
+		slope_body.add_to_group("cherpg_grabbable")
+	add_child(slope_body)
+	slope_body.add_child(coll)
 
 func _create_uneven_area() -> void:
 	# A localized terrain specimen; the full surrounding field stays level.
@@ -226,8 +248,13 @@ func station_name(index: int) -> String:
 	return labels[i]
 
 func set_board_debug_visible(enabled: bool) -> void:
-	if grid_material != null:
-		grid_material.set_shader_parameter("border_opacity",1.0 if enabled else 0.92)
+	# I toggles all chess-cell boundaries and the checker contrast at once.
+	board_grid_visible = enabled
+	for mat in all_grid_materials:
+		mat.set_shader_parameter("board_visible", 1.0 if enabled else 0.0)
+
+func board_visible() -> bool:
+	return board_grid_visible
 
 func _create_labels() -> void:
 	for i in range(SPAWN_X.size()):
