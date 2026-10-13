@@ -1,4 +1,4 @@
-name: CheRPG Windows EXE (0.0.10v)
+name: CheRPG Windows EXE (0.0.11v)
 
 on:
   pull_request:
@@ -40,9 +40,9 @@ jobs:
           PROJECT="$PWD/godot/tests/motion_rotation_lab"
           mkdir -p "$PROJECT/build"
           godot --headless --path "$PROJECT" --export-release \
-            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.10v.exe"
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.11v.exe"
 
-          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.10v.exe"
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.11v.exe"
           test -s "$EXE"
           python3 - "$EXE" <<'PY'
           from pathlib import Path
@@ -68,15 +68,15 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="godot/tests/motion_rotation_lab"
-          cp "$PROJECT/docs/WINDOWS_EXE_0.0.10v.md" \
-             "$PROJECT/build/README-WINDOWS-0.0.10v.md"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.11v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.11v.md"
 
       - name: Publish Windows test executable
         uses: actions/upload-artifact@v4
         with:
-          name: CheRPG-MotionLab-Windows-0.0.10v
+          name: CheRPG-MotionLab-Windows-0.0.11v
           path: |
-            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.10v.exe
-            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.10v.md
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.11v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.11v.md
           retention-days: 14
           if-no-files-found: error
