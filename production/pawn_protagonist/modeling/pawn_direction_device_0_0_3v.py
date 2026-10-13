@@ -12,6 +12,7 @@ from mathutils import Vector
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from direction_contact_solver import PRESETS,solve,FOOT_THICKNESS,SPLIT_Z
+from merge_device_actions import merge_actions
 terrain_preset="micro_terrain"
 contact=solve(PRESETS[terrain_preset])
 if not contact["safe"]:
@@ -203,6 +204,10 @@ bpy.ops.wm.save_as_mainfile(filepath=str(output/"pawn-direction-device-0.0.3v.bl
 select_device()
 bpy.ops.export_scene.gltf(filepath=str(output/"pawn-direction-device-animated-0.0.3v.glb"),
     export_format="GLB",use_selection=True,export_animations=True,export_extras=True)
+merged_clip_report=merge_actions(
+    output/"pawn-direction-device-animated-0.0.3v.glb",
+    output/"pawn-direction-device-unified-animation-0.0.3v.glb")
+print("CHERPG_GLTF_UNIFIED_CLIP_READY",json.dumps(merged_clip_report))
 states=(("stowed",1),("deployed_front",50),("deployed_east",80))
 for label,f in states:
     scene.frame_set(f)
