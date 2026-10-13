@@ -526,41 +526,86 @@ func _update_air_pose(delta: float) -> void:
 	avatar.rotation.x = lerpf(avatar.rotation.x, -0.05 if rising else 0.045, minf(1.0, delta * 6.5))
 	avatar.position.y = lerpf(avatar.position.y, 0.02 * takeoff_visual, minf(1.0, delta * 9.0))
 
+func _gait_joint_targets(phase: float, run_amount: float) -> Vector3:
+	# Simplified gait-cycle key poses, not a pure sine wave.
+	# Literature-inspired 60% stance/40% swing; loading knee ~15-20°,
+	# initial swing knee approaching ~60° for toe clearance.
+	# Result vector: hip sagittal, knee flexion, ankle/foot pitch (radians).
+	var hip: float = 0.0
+	var knee_angle: float = 0.0
+	var ankle: float = 0.0
+	var stride_scale: float = lerpf(1.0,1.35,run_amount)
+	if phase < 0.12:
+		# Heel strike -> loading response: slight knee shock absorption.
+		var t: float = smoothstep(0.0,0.12,phase)
+		hip = lerpf(0.37,0.18,t) * stride_scale
+		knee_angle = lerpf(0.04,0.30,t)
+		ankle = lerpf(0.11,-0.04,t)
+	elif phase < 0.40:
+		# Weight passes over the planted foot; knee straightens.
+		var t: float = smoothstep(0.12,0.40,phase)
+		hip = lerpf(0.18,-0.26,t) * stride_scale
+		knee_angle = lerpf(0.30,0.08,t)
+		ankle = lerpf(-0.04,-0.12,t)
+	elif phase < 0.60:
+		# Heel rises, toe pushes off, knee folds for preswing.
+		var t: float = smoothstep(0.40,0.60,phase)
+		hip = lerpf(-0.26,-0.38,t) * stride_scale
+		knee_angle = lerpf(0.08,0.49,t)
+		ankle = lerpf(-0.12,-0.34,t)
+	elif phase < 0.80:
+		# Swing: knee flexes to clear toe and thigh advances.
+		var t: float = smoothstep(0.60,0.80,phase)
+		hip = lerpf(-0.38,0.16,t) * stride_scale
+		knee_angle = lerpf(0.49,1.05,t)
+		ankle = lerpf(-0.34,0.16,t)
+	else:
+		# Terminal swing extends knee before heel strike.
+		var t: float = smoothstep(0.80,1.0,phase)
+		hip = lerpf(0.16,0.37,t) * stride_scale
+		knee_angle = lerpf(1.05,0.04,t)
+		ankle = lerpf(0.16,0.11,t)
+	return Vector3(hip,knee_angle * lerpf(1.0,1.13,run_amount),ankle)
+
 func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: float) -> void:
-	# Ground locomotion: continuous walk/run blend instead of a frame-cut.
-	# Pace follows real planar travel. Arm swing is opposite to each thigh.
-	var locomotion: float = clampf(horizontal_speed / WALK_MPS, 0.0, 1.0)
+	# Human-inspired phase organization; 60% foot support + 40% leg swing.
+	# This is artistic procedural animation for the 1.55m primitive Pawn.
+	# Real-time planted-foot IK is not yet implemented.
+	var moving: float = clampf(horizontal_speed / WALK_MPS,0.0,1.0)
+	var activity: float = moving * clampf(axis * 2.0,0.0,1.0)
 	var target_run: float = 1.0 if running and horizontal_speed > 2.0 else 0.0
-	run_blend = move_toward(run_blend, target_run, delta * 4.8)
-	var activity: float = locomotion * clampf(axis * 2.1, 0.0, 1.0)
-	if activity > 0.02:
-		gait_clock += horizontal_speed * delta * lerpf(2.1, 2.68, run_blend)
-	var stride: float = lerpf(0.48, 0.80, run_blend) * activity
-	var lift: float = lerpf(0.40, 0.76, run_blend) * activity
-	var slope_scale: float = clampf(floor_deg / 25.0, 0.0, 1.0)
-	var uphill: float = maxf(0.0, slope_sign) * slope_scale
-	var downhill: float = maxf(0.0, -slope_sign) * slope_scale
-	var smooth: float = minf(1.0, delta * 12.0)
+	run_blend = move_toward(run_blend,target_run,delta * 5.2)
+	# Body movement speed is retained from Unity input, but animation cadence
+	# is clamped to natural-looking proportions rather than 4m stride length.
+	if activity > 0.03:
+		var cycles_per_sec: float = lerpf(0.72,1.65,run_blend) * lerpf(0.45,1.0,moving)
+		gait_clock = fposmod(gait_clock + TAU * cycles_per_sec * delta, TAU)
+	var phase: float = fposmod(gait_clock / TAU,1.0)
+	var slope_ratio: float = clampf(floor_deg / 45.0,0.0,1.0)
+	var uphill: float = maxf(0.0,slope_sign) * slope_ratio
+	var downhill: float = maxf(0.0,-slope_sign) * slope_ratio
+	var blend: float = minf(1.0,delta * 13.5)
 	for i in range(2):
-		var phase: float = gait_clock + (0.0 if i == 0 else PI)
-		var leg_cycle: float = sin(phase)
-		# Bent knee clears the ground during forward recovery and steep climbs.
-		var recovering: float = maxf(0.0, leg_cycle)
-		var thigh_goal: float = leg_cycle * stride + uphill * 0.08
-		var knee_goal: float = (recovering * lift + uphill * 0.24 + downhill * 0.08) * activity
-		var foot_goal: float = -knee_goal * 0.38 - leg_cycle * 0.10 * activity
-		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, thigh_goal, smooth)
-		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_goal, smooth)
-		feet[i].rotation.x = lerpf(feet[i].rotation.x, foot_goal, smooth)
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, -leg_cycle * stride * 0.77, smooth)
-		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z, (1.0 if i == 0 else -1.0) * run_blend * 0.055 * activity, smooth)
-	var forward_lean: float = -0.075 * run_blend * activity - uphill * 0.10 + downhill * 0.035
-	avatar.rotation.x = lerpf(avatar.rotation.x, forward_lean, minf(1.0, delta * 7.0))
-	# Two support beats per stride. Landing compression remains visual only.
-	var support_beat: float = 0.5 - 0.5 * cos(gait_clock * 2.0)
-	var bounce: float = support_beat * lerpf(0.011, 0.029, run_blend) * activity
+		var local_phase: float = fposmod(phase + (0.0 if i == 0 else 0.5),1.0)
+		var joints: Vector3 = _gait_joint_targets(local_phase,run_blend)
+		var thigh: float = (joints.x + uphill * 0.12) * activity
+		var knee_target: float = (joints.y + uphill * 0.16 + downhill * 0.06) * activity
+		var foot_target: float = (joints.z - uphill * 0.08) * activity
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,thigh,blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,knee_target,blend)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,foot_target,blend)
+		# Right arm moves forward with left thigh (counter-swing).
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-thigh * .68,blend)
+		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z,(1.0 if i == 0 else -1.0) * .038 * activity,blend)
+	# Alternating support allows small centre-of-mass bob and lateral shift.
+	var support: float = absf(sin(phase * TAU))
+	var bob: float = (0.006 + .014 * run_blend) * support * activity
 	var compression: float = -0.07 * landing_visual + 0.035 * takeoff_visual
-	avatar.position.y = lerpf(avatar.position.y, bounce + compression, minf(1.0, delta * 12.0))
+	var forward_lean: float = -.040 * activity - .065 * run_blend * activity - uphill * .10 + downhill * .035
+	avatar.rotation.x = lerpf(avatar.rotation.x,forward_lean,minf(1.0,delta*8.0))
+	avatar.rotation.z = lerpf(avatar.rotation.z,.025 * cos(phase * TAU) * activity,minf(1.0,delta * 7.0))
+	avatar.position.y = lerpf(avatar.position.y,bob+compression,minf(1.0,delta * 13.0))
+
 
 func _apply_attack_pose(delta: float) -> void:
 	# Left-click input from pawn_player.cs: right arm swings once, retriggerable.
