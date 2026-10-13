@@ -10,7 +10,7 @@ const RAMP_ANGLES := [8.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0]
 const RAMP_X := [-38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0]
 const RAMP_Z := 19.0
 const SPAWN_X := [0.0, -38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0, -22.0, 20.0]
-const SPAWN_Z := [38.0, 29.0, 29.0, 29.0, 29.0, 29.0, 29.0, 29.0, -18.0, -19.0]
+const SPAWN_Z := [38.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, -18.0, -18.0]
 const GROUND_TOP_Y := 0.0
 var grid_material: ShaderMaterial
 
@@ -114,7 +114,7 @@ func _create_ramp(index: int) -> void:
 	# Closed, static wedge mesh, collision generated from the same surface.
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var tris := [a,c,b, b,c,d,
+	var tris := [a,b,c, b,d,c,
 		a,b,e, b,f,e,
 		e,f,c, f,d,c,
 		a,e,c, b,d,f]
@@ -147,10 +147,10 @@ func _create_uneven_area() -> void:
 			var x1: float = center.x-radius + float(ix+1) * 2.0 * radius / divisions
 			var z0: float = center.y-radius + float(iz) * 2.0 * radius / divisions
 			var z1: float = center.y-radius + float(iz+1) * 2.0 * radius / divisions
-			var a := Vector3(x0, height_at(x0,z0), z0)
-			var b := Vector3(x0, height_at(x0,z1), z1)
-			var c := Vector3(x1, height_at(x1,z0), z0)
-			var d := Vector3(x1, height_at(x1,z1), z1)
+			var a := Vector3(x0, height_at(x0,z0)+.008, z0)
+			var b := Vector3(x0, height_at(x0,z1)+.008, z1)
+			var c := Vector3(x1, height_at(x1,z0)+.008, z0)
+			var d := Vector3(x1, height_at(x1,z1)+.008, z1)
 			for vertex in [a,b,c,c,b,d]:
 				st.add_vertex(vertex)
 	st.generate_normals()
