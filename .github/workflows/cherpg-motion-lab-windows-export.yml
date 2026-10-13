@@ -61,14 +61,6 @@ jobs:
             exit 1
           fi
 
-      - name: ONE-TIME user-authorized gameplay physics test (0.0.20v only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 150s godot --headless --path godot/tests/motion_rotation_lab \
-            --script res://tests/playtest_camera_motion_0.0.20v.gd 2>&1 | tee "$RUNNER_TEMP/playtest.log"
-          grep -F 'CHERPG_REAL_PLAYTEST_PASS' "$RUNNER_TEMP/playtest.log"
-
       - name: Export one self-contained Windows x86_64 EXE
         shell: bash
         run: |
