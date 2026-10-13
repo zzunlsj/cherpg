@@ -499,7 +499,7 @@ func _physics_process(delta: float) -> void:
 		_update_air_pose(delta)
 	_apply_attack_pose(delta)
 	_clamp_anatomical_joints()
-	avatar.scale.y = lerpf(1.0,0.80,crouch_blend)
+	avatar.scale.y = lerpf(1.0,0.67,crouch_blend)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
 
