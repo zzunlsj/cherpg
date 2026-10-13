@@ -1117,6 +1117,9 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	smoothed_input = 0.0
 	latest_axis = 0.0
 	latest_sprint = false
+	source_fixed_input_vec = Vector2.ZERO
+	source_force_vec = Vector2.ZERO
+	source_anim_speed = 0.0
 	jump_buffer_left = 0.0
 	coyote_left = 0.0
 	jump_key_down = false
