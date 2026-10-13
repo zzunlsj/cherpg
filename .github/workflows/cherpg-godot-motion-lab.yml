@@ -34,14 +34,16 @@ jobs:
           assert 'BaseFloorCollision_100x100' in terrain
           assert 'const WIDTH_M := 100.0' in terrain
           assert 'const DEPTH_M := 100.0' in terrain
-          assert 'const TILE_M := 2.0' in terrain
+          assert 'const TILE_M := 4.0' in terrain
           assert 'shader_type spatial;' in terrain
-          assert 'const END_Z := -56.0' in terrain
-          assert 'func zone_index(' in terrain
           assert 'func trigger_attack()' in move
           assert 'func set_preview_held(held: bool)' in device
           assert 'ANCHOR_ANGLES := [45.0, 135.0, 225.0, 315.0]' in device
-          assert 'func queue_dash()' in move
+          assert 'Input.is_key_pressed(KEY_CTRL)' in move
+          assert 'Input.is_key_pressed(KEY_SHIFT)' in move
+          assert 'func _clamp_anatomical_joints()' in move
+          assert 'func _constrain_step(' in move
+          assert 'var board_rules_enabled := true' in move
           print('CHERPG_GODOT_SOURCE_STRUCTURE_OK')
           PY
       - name: Install Godot 4.7.2
@@ -58,12 +60,12 @@ jobs:
           if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Failed to load script' "$RUNNER_TEMP/import.log"; then
             exit 1
           fi
-      - name: Run five test lanes, four anchors, jump and landing
+      - name: Run user-invoked 100m arena smoke check
         shell: bash
         run: |
           set -euo pipefail
           timeout 35s godot --headless --path godot/tests/motion_rotation_lab --quit-after 1200 -- --smoke-test 2>&1 | tee "$RUNNER_TEMP/smoke.log"
-          grep -F 'CHERPG_100X100_2M_GRID_STRUCTURE_OK' "$RUNNER_TEMP/smoke.log"
+          grep -F 'CHERPG_100X100_4M_GRID_STRUCTURE_OK' "$RUNNER_TEMP/smoke.log"
           if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Assertion failed|ERROR:' "$RUNNER_TEMP/smoke.log"; then
             exit 1
           fi
