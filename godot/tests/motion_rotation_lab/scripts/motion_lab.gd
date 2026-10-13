@@ -15,7 +15,7 @@ const CAMERA_ELEVATION_MIN := -PI / 7.2
 const CAMERA_ELEVATION_MAX := PI / 2.0
 var camera_distance := 6.8
 var camera_target := Vector3.ZERO
-var grid_debug_visible := false
+var grid_debug_visible := true
 var active_station := 0
 
 func _ready() -> void:
@@ -73,7 +73,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "WASD: camera-relative move | F: install / remove anchors | A/D while anchored: -/+90°\nR (hold): required-area hologram | O: reset | Shift: dash | Space: variable jump\n1-9,0: 10 test stations on ONE 100x100m flat base | F1: emphasize 2m board\nClick: attack pose | Z/C: body-only turn | Mouse: orbit (up to 90° top-down) | Esc: release mouse"
+	help_label.text = "WASD: camera move | Hold F: installation footprint | Release F: deploy / stow anchors\nAnchored A / D: heading -/+90° | I: toggle 4m chess tile borders | O: reset | Shift: dash\nSpace: jump | 1-9,0: 10 test zones, 100m x 100m, 25x25 cells | Mouse: orbit 90°\nClick: attack gesture | Z/C: body-only rotate | Esc: release mouse"
 	help_label.add_theme_font_size_override("font_size",14)
 	content.add_child(help_label)
 	_update_hud()
@@ -84,7 +84,7 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	_update_camera(delta)
 	if pawn != null and pawn.device != null:
-		pawn.device.call("set_preview_held",Input.is_key_pressed(KEY_R))
+		pawn.device.call("set_preview_held",Input.is_key_pressed(KEY_F))
 
 func _update_camera(delta: float) -> void:
 	if pawn == null or camera == null:
@@ -120,11 +120,17 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			pawn.release_jump()
 		get_viewport().set_input_as_handled()
 		return
+	# Single F key: while held show the required area; on release commit
+	# the deploy / stow command once. No R preview action remains.
+	if event.physical_keycode == KEY_F:
+		if not event.pressed:
+			pawn.device.call("set_preview_held",false)
+			pawn.device.call("request_toggle")
+		get_viewport().set_input_as_handled()
+		return
 	if not event.pressed or event.echo:
 		return
 	match event.physical_keycode:
-		KEY_F:
-			pawn.device.call("request_toggle")
 		KEY_A:
 			if pawn.device.call("phase_name") == "ANCHORED":
 				pawn.device.call("request_turn",-1)
@@ -143,7 +149,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			pawn.rotate_body_only(-90.0)
 		KEY_C:
 			pawn.rotate_body_only(90.0)
-		KEY_F1:
+		KEY_I:
 			grid_debug_visible = not grid_debug_visible
 			terrain.call("set_board_debug_visible",grid_debug_visible)
 		KEY_ESCAPE:
@@ -164,17 +170,17 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 2m GRID | 0.0.13v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.14v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "CAMERA: %.0f°/90° | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
-		+ "TILE: (%d,%d) | %s | PREVIEW: %s | DASH CD: %.1fs" % [pawn.current_cell.x,pawn.current_cell.y,rule_status,pawn.device.preview_reason,pawn.dash_cooldown]
+		+ "TILE: (%d,%d) | %s | GRID: %s | F: %s | DASH CD: %.1fs" % [pawn.current_cell.x,pawn.current_cell.y,rule_status,("ON" if grid_debug_visible else "OFF"),pawn.device.preview_reason,pawn.dash_cooldown]
 
 func _run_smoke_test() -> void:
 	# User invoked via --smoke-test. Short structure-only check; no long playtest.
 	assert(terrain != null)
 	assert(terrain.get_node_or_null("BaseFloorCollision_100x100") != null)
-	assert(terrain.get_node_or_null("VerticalWallCollision") != null)
+	assert(terrain.get_node_or_null("Grabbable90degWall/VerticalWallCollision") != null)
 	assert(pawn.device.components.size() == 4)
 	for i in range(int(terrain.call("spawn_count"))):
 		assert(terrain.call("spawn_position",i) is Vector3)
