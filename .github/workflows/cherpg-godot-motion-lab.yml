@@ -64,6 +64,19 @@ jobs:
               raise RuntimeError("Expected smoke test assertion missing")
           p.write_text(s.replace(before,after))
           PY
+      - name: Enable terrain backface collision for Godot physics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("godot/tests/motion_rotation_lab/scripts/test_lane.gd")
+          s=p.read_text()
+          old="\tcollision.shape = mesh.create_trimesh_shape()"
+          new="\tvar terrain_shape: ConcavePolygonShape3D = mesh.create_trimesh_shape()\n\tterrain_shape.backface_collision = true\n\tcollision.shape = terrain_shape"
+          if old not in s and new not in s:
+              raise RuntimeError("Terrain collider assignment missing")
+          p.write_text(s.replace(old,new))
+          PY
       - name: Install Godot 4.5.2 (non-.NET)
         uses: chickensoft-games/setup-godot@v2
         with:
