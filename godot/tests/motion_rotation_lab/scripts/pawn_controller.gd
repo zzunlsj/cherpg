@@ -35,6 +35,8 @@ const MAX_UPWARD_SPEED := 7.0
 const MAX_ASCENT_ANGLE_DEG := 90.0
 const NORMAL_FLOOR_CUTOFF_DEG := 29.5  # >=30° requires grabbable contact-climbing
 const WALL_CLIMB_MPS := 2.5
+const WALL_SIDE_MPS := 2.0
+const CLIMB_CONTACT_GRACE_SECONDS := 0.18
 const CLIMB_MIN_ANGLE_DEG := 30.0
 const GRAB_REACH_M := 0.95
 const CROUCH_MPS := 1.8
@@ -77,6 +79,9 @@ var capsule_shape: CapsuleShape3D
 var capsule_collider: CollisionShape3D
 var climbing := false
 var climb_normal := Vector3.ZERO
+var climb_contact_grace := 0.0
+var climb_input := Vector2.ZERO
+var climb_heading := Vector3.FORWARD
 const MANTLE_TIME := 1.16
 var mantle_active := false
 var mantle_clock := 0.0
@@ -300,6 +305,53 @@ func _wall_contact(move_forward: Vector3) -> Dictionary:
 	hit["slope_angle"] = face_angle
 	return hit
 
+func _climb_wall_up() -> Vector3:
+	# Up projected onto the surface plane; works for 30–90 degree slopes.
+	var tangent: Vector3 = Vector3.UP.slide(climb_normal)
+	return tangent.normalized() if tangent.length_squared() > 0.0001 else Vector3.UP
+
+func _climb_wall_right() -> Vector3:
+	# World UP cross wall outward normal is the character's wall-relative RIGHT.
+	# Stable under all camera yaw/pitch changes after gripping the wall.
+	var right: Vector3 = Vector3.UP.cross(climb_normal)
+	return right.normalized() if right.length_squared() > 0.0001 else Vector3.RIGHT
+
+func _update_climb_contact(delta: float, gripping: bool, active_direction: float, device_busy: bool) -> void:
+	if not gripping or device_busy:
+		climbing = false
+		climb_contact_grace = 0.0
+		climb_input = Vector2.ZERO
+		return
+	if climbing:
+		# Recast along the attached wall normal, never along the camera view.
+		# Update the normal for a gently curving grabbable wall as we sidestep.
+		var contact: Dictionary = _wall_contact(-climb_normal)
+		if not contact.is_empty():
+			var new_normal: Vector3 = contact["normal"]
+			if new_normal.dot(climb_normal) >= 0.67:
+				climb_normal = new_normal
+				climb_contact_grace = CLIMB_CONTACT_GRACE_SECONDS
+			else:
+				contact = {}
+		if contact.is_empty():
+			climb_contact_grace = maxf(0.0,climb_contact_grace-delta)
+			if climb_contact_grace <= 0.0:
+				climbing = false
+				climb_input = Vector2.ZERO
+				return
+	elif active_direction > 0.25:
+		# Grabbing begins with Ctrl+forward toward a grabbable wall.
+		var contact: Dictionary = _wall_contact(_camera_flat_forward())
+		if not contact.is_empty():
+			climbing = true
+			climb_normal = contact["normal"]
+			climb_heading = -climb_normal
+			climb_contact_grace = CLIMB_CONTACT_GRACE_SECONDS
+	if climbing:
+		# Root input is raw, not smoothed. Releasing W/A/S/D while holding Ctrl
+		# must yield exactly zero tangent velocity and hold the current spot.
+		climb_heading = -climb_normal
+
 func _begin_mantle(target: Vector3) -> void:
 	mantle_active = true
 	mantle_clock = 0.0
@@ -508,11 +560,9 @@ func _physics_process(delta: float) -> void:
 	latest_sprint = wants_run
 	var forward: Vector3 = _camera_flat_forward()
 	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
-	var contact: Dictionary = _wall_contact(forward) if raw_axis > 0.35 and running and not device_busy else {}
-	# Grabbing requires Ctrl + forward movement + tagged surface 30° or steeper.
-	climbing = not contact.is_empty()
-	if climbing:
-		climb_normal = contact["normal"]
+	# Once attached, Ctrl+W/S/A/D uses the wall tangent frame, never camera yaw.
+	_update_climb_contact(delta,running,raw_axis,device_busy)
+	climb_input = Vector2(raw_strafe,raw_axis).limit_length(1.0) if climbing else Vector2.ZERO
 
 	if was_on_floor:
 		ground_normal = get_floor_normal()
@@ -539,9 +589,10 @@ func _physics_process(delta: float) -> void:
 		was_on_floor = false
 
 	if climbing:
-		# Surface-tangent ascent works from 30° inclines to 90° walls.
-		var ascent: Vector3 = (Vector3.UP - climb_normal * climb_normal.y).normalized()
-		velocity.y = ascent.y * WALL_CLIMB_MPS - climb_normal.y * 0.18
+		# Ctrl alone: zero velocity and no gravity (hold position).
+		# W/S: ±tangent-up; A/D: ±tangent-right, independent of camera.
+		var wall_motion: Vector3 = _climb_wall_up() * (climb_input.y * WALL_CLIMB_MPS) 			+ _climb_wall_right() * (climb_input.x * WALL_SIDE_MPS)
+		velocity.y = wall_motion.y
 		jump_state = "CLIMBING"
 	elif not was_on_floor:
 		var grav_mult: float = FALL_GRAVITY_MULT if velocity.y < 0.0 else (JUMP_RELEASE_GRAVITY_MULT if not jump_key_down else 1.0)
@@ -557,8 +608,9 @@ func _physics_process(delta: float) -> void:
 
 	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, wants_run, delta, was_on_floor, slope_factor)
 	if climbing:
-		var tangent_up: Vector3 = (Vector3.UP - climb_normal * climb_normal.y).normalized()
-		next_horizontal = Vector3(tangent_up.x,0.0,tangent_up.z) * WALL_CLIMB_MPS 			- Vector3(climb_normal.x,0.0,climb_normal.z) * 0.18
+		var wall_motion: Vector3 = _climb_wall_up() * (climb_input.y * WALL_CLIMB_MPS) 			+ _climb_wall_right() * (climb_input.x * WALL_SIDE_MPS)
+		# Wall grip holds in place with Ctrl alone; never apply inward drift.
+		next_horizontal = Vector3(wall_motion.x,0.0,wall_motion.z)
 	if device_busy:
 		next_horizontal = Vector3.ZERO
 	var starting_position: Vector3 = global_position
@@ -568,7 +620,8 @@ func _physics_process(delta: float) -> void:
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
 	move_and_slide()
-	_try_climb_top_ledge(forward)
+	if climbing and climb_input.y > 0.25:
+		_try_climb_top_ledge(-climb_normal)
 	# Physical collision resolution and airborne drift must obey the same rule.
 	var resolved: Dictionary = _constrain_step(starting_position,global_position)
 	var allowed_position: Vector3 = resolved["position"]
@@ -585,7 +638,13 @@ func _physics_process(delta: float) -> void:
 	else:
 		resistance_time = maxf(0.0, resistance_time - delta)
 	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
-	_update_body_facing(delta, _horizontal_velocity(), device_busy)
+	if climbing:
+		# Face the gripped surface instead of following the camera or
+		# sideways movement (which would rotate the wall tangent controls).
+		var wall_yaw: float = atan2(climb_normal.x,climb_normal.z)
+		avatar.rotation.y = lerp_angle(avatar.rotation.y,wall_yaw,minf(1.0,delta*9.0))
+	else:
+		_update_body_facing(delta, _horizontal_velocity(), device_busy)
 
 	# Resolve landing on the current physics tick, not only on the next tick.
 	if is_on_floor() and jump_state != "GROUNDED":
@@ -593,7 +652,7 @@ func _physics_process(delta: float) -> void:
 			landing_visual = 1.0
 		jump_state = "GROUNDED"
 	if climbing:
-		move_state = "CLIMB"
+		move_state = "CLIMB HOLD" if climb_input.length_squared() < 0.001 else "CLIMB MOVE"
 	elif crouching and is_on_floor():
 		move_state = "CROUCH MOVE" if _horizontal_velocity().length() > 0.10 else "CROUCH"
 	elif not is_on_floor():
@@ -607,7 +666,7 @@ func _physics_process(delta: float) -> void:
 
 	var horizontal_speed: float = Vector2(get_real_velocity().x,get_real_velocity().z).length()
 	if climbing:
-		_update_climb_pose(delta)
+		_update_climb_pose(delta,climb_input)
 	elif crouching and is_on_floor():
 		_update_crouch_pose(delta,horizontal_speed,input_vector.length())
 	elif is_on_floor():
@@ -993,6 +1052,8 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	capsule_collider.position.y = STANDING_HEIGHT_M*0.5
 	avatar.scale = Vector3.ONE
 	climbing = false
+	climb_contact_grace = 0.0
+	climb_input = Vector2.ZERO
 	mantle_active = false
 	mantle_clock = 0.0
 	mantle_stage = "NONE"
