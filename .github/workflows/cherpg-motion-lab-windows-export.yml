@@ -1,0 +1,76 @@
+name: CheRPG Windows EXE (0.0.7v)
+
+on:
+  push:
+    branches:
+      - feature/godot-motion-rotation-testmap-0.0.4v
+    paths:
+      - ".github/workflows/cherpg-motion-lab-windows-export.yml"
+      - "godot/tests/motion_rotation_lab/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout standalone Godot laboratory
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.5.2 plus official export templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: "4.5.2"
+          use-dotnet: false
+          include-templates: true
+
+      - name: Import resources (build preparation only — no play testing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 55s godot --headless --editor --import \
+            --path godot/tests/motion_rotation_lab --quit
+
+      - name: Export one self-contained Windows x86_64 EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="$PWD/godot/tests/motion_rotation_lab"
+          mkdir -p "$PROJECT/build"
+          godot --headless --path "$PROJECT" --export-release \
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.7v.exe"
+
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.7v.exe"
+          test -s "$EXE"
+          python3 - "$EXE" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          with p.open('rb') as f: magic=f.read(2)
+          assert magic == b'MZ', "Output is not a Windows Portable Executable"
+          assert p.stat().st_size > 1000000, "Exported EXE unexpectedly small"
+          pcks=list(p.parent.glob('*.pck'))
+          assert not pcks, f"Expected embedded PCK, got external resources: {pcks}"
+          print(f"CHERPG_WINDOWS_EXE_EXPORT_OK {p.stat().st_size} bytes")
+          PY
+          
+      - name: Bundle instructions with EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="godot/tests/motion_rotation_lab"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.7v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.7v.md"
+
+      - name: Publish Windows test executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: CheRPG-MotionLab-Windows-0.0.7v
+          path: |
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.7v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.7v.md
+          retention-days: 14
+          if-no-files-found: error
