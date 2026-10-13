@@ -1,0 +1,65 @@
+name: CheRPG Godot Motion Lab 0.0.6v
+
+on:
+  push:
+    branches: [feature/godot-motion-rotation-testmap-0.0.4v]
+    paths:
+      - 'godot/testmap-source-0.0.6v.tar.xz.b64'
+      - '.github/workflows/cherpg-godot-motion-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  motion-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout prototype branch
+        uses: actions/checkout@v4
+      - name: Decode archived source and verify checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d godot/testmap-source-0.0.6v.tar.xz.b64 > "$RUNNER_TEMP/motion-lab.tar.xz"
+          echo 'b581beede79af41cfa3722838f28024becbee9a36a594d7753139f95dc491dcd  '"$RUNNER_TEMP/motion-lab.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/motion-lab.tar.xz"
+          test -f godot/tests/motion_rotation_lab/scenes/MotionLab.tscn
+          test -f godot/tests/motion_rotation_lab/scripts/pawn_controller.gd
+          test -f godot/tests/motion_rotation_lab/scripts/direction_device.gd
+      - name: Install Godot 4.5.2 (non-.NET)
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: '4.5.2'
+          use-dotnet: false
+          include-templates: false
+      - name: Headless import (fail on script errors)
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot --version
+          timeout 90s godot --headless --editor --import --path godot/tests/motion_rotation_lab --quit 2>&1 | tee "$RUNNER_TEMP/import.log"
+          if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Failed to load script' "$RUNNER_TEMP/import.log"; then
+            exit 1
+          fi
+      - name: Run five terrain/anchor/jump smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s godot --headless --path godot/tests/motion_rotation_lab -- --smoke-test 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+          grep -F 'CHERPG_GODOT_TESTMAP_SMOKE_OK' "$RUNNER_TEMP/smoke.log"
+          if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Assertion failed' "$RUNNER_TEMP/smoke.log"; then
+            exit 1
+          fi
+      - name: Commit expanded readable project source on prototype branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add godot/tests/motion_rotation_lab
+          if ! git diff --cached --quiet; then
+            git commit -m 'test: publish verified standalone Godot motion lab 0.0.6v'
+            git push origin HEAD:feature/godot-motion-rotation-testmap-0.0.4v
+          fi
