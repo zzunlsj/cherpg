@@ -27,6 +27,9 @@ var components: Array[Dictionary] = []
 var contact_cache: Array[Dictionary] = []
 var opening_ring: MeshInstance3D
 var heading_pivot: Node3D
+var preview_root: Node3D
+var ghost_color: StandardMaterial3D
+var preview_reason := "NO PREVIEW"
 var dark: StandardMaterial3D
 var silver: StandardMaterial3D
 var accent: StandardMaterial3D
@@ -59,6 +62,7 @@ func bind_pawn(character: CharacterBody3D) -> void:
 	arrowhead.position = Vector3(.645,.052,0)
 	arrowhead.rotation.z = -PI/2.0
 	heading_visual = PI/2.0
+	_build_hologram()
 	instant_stow()
 
 func _mat(color: Color, metal: float) -> StandardMaterial3D:
@@ -106,6 +110,74 @@ func _make_torus(title: String, major: float, minor: float, mat: Material) -> Me
 	obj.position.y = WAIST_Y
 	return obj
 
+func _build_hologram() -> void:
+	# Required device clearance diameter: Ø(2*(.68+.075))=1.51m.
+	# Also draw the CURRENT 2x2m board tile independently.
+	preview_root = Node3D.new()
+	preview_root.name = "R_HoldRequiredFootprintHologram"
+	add_child(preview_root)
+	ghost_color = StandardMaterial3D.new()
+	ghost_color.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ghost_color.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ghost_color.cull_mode = BaseMaterial3D.CULL_DISABLED
+	ghost_color.albedo_color = Color(0.18,0.91,0.75,0.24)
+	var area := MeshInstance3D.new()
+	area.name = "RequiredClearanceSquare_1p51m"
+	var area_mesh := BoxMesh.new()
+	area_mesh.size = Vector3(2.0*(OPEN_RADIUS+FOOT_RADIUS),0.012,2.0*(OPEN_RADIUS+FOOT_RADIUS))
+	area.mesh = area_mesh
+	area.material_override = ghost_color
+	preview_root.add_child(area)
+	var disk_mesh := CylinderMesh.new()
+	disk_mesh.top_radius = FOOT_RADIUS
+	disk_mesh.bottom_radius = FOOT_RADIUS
+	disk_mesh.height = .018
+	disk_mesh.radial_segments = 16
+	for i in range(4):
+		var a: float = deg_to_rad(ANCHOR_ANGLES[i])
+		var shoe := MeshInstance3D.new()
+		shoe.name = "AnchorFootPrint_%d" % (i + 1)
+		shoe.mesh = disk_mesh
+		shoe.material_override = ghost_color
+		shoe.position = Vector3(OPEN_RADIUS*cos(a),.025,-OPEN_RADIUS*sin(a))
+		preview_root.add_child(shoe)
+	var tile_outline := MeshInstance3D.new()
+	tile_outline.name = "BoardTile2x2m_Hologram"
+	var boundary := TorusMesh.new()
+	boundary.inner_radius = 1.01
+	boundary.outer_radius = 1.025
+	# The circle helps read the area; actual tile is shader-marked square.
+	tile_outline.mesh = boundary
+	tile_outline.material_override = ghost_color
+	tile_outline.position.y = .055
+	preview_root.add_child(tile_outline)
+	preview_root.visible = false
+
+func set_preview_held(held: bool) -> void:
+	if preview_root == null:
+		return
+	if not held or phase != Phase.STOWED:
+		preview_root.visible = false
+		return
+	preview_root.visible = true
+	preview_root.position = Vector3(0.0,0.08,0.0)
+	var valid: bool = pawn != null and pawn.is_on_floor() and Vector2(pawn.velocity.x,pawn.velocity.z).length() < .15
+	if valid:
+		var result: Dictionary = _probe_all_feet()
+		valid = bool(result["ok"])
+		preview_reason = "ANCHOR CLEAR" if valid else str(result["reason"])
+	else:
+		preview_reason = "STOP ON THE GROUND TO INSTALL"
+	ghost_color.albedo_color = Color(0.13,0.87,0.63,.25) if valid else Color(1.0,.20,.16,.25)
+
+func request_toggle() -> void:
+	if phase == Phase.STOWED:
+		request_deploy()
+	elif phase == Phase.GROUNDED:
+		request_stow()
+	else:
+		reason = "WAIT FOR DEVICE ANIMATION"
+
 func is_busy() -> bool:
 	return phase != Phase.STOWED
 
@@ -137,7 +209,9 @@ func request_deploy() -> void:
 	phase = Phase.DEPLOYING
 	reason = "SUPPORT LOCKED"
 
-func request_turn() -> void:
+func request_turn(step: int = 1) -> void:
+	if abs(step) != 1:
+		return
 	if pawn == null or not pawn.is_on_floor():
 		reason = "GROUNDED BODY REQUIRED"
 		return
@@ -152,9 +226,9 @@ func request_turn() -> void:
 		reason = str(result["reason"])
 		return
 	contact_cache = result["contacts"]
-	turn_target_index = (pawn.heading_index + 1) % 4
+	turn_target_index = posmod(pawn.heading_index + step, 4)
 	heading_start = heading_visual
-	heading_goal = heading_visual - PI/2.0
+	heading_goal = heading_visual - float(step) * PI/2.0
 	phase = Phase.TURNING
 	phase_time = 0.0
 
