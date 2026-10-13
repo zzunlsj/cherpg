@@ -67,6 +67,7 @@ var latest_axis := 0.0
 var latest_sprint := false
 var source_fixed_input_vec := Vector2.ZERO # Unity fixedInputVec (planar x,z)
 var source_force_vec := Vector2.ZERO # Unity force prior to AddForce
+var source_anim_speed := 0.0 # Unity anim.SetFloat("speed", planar linearVelocity.magnitude)
 var jump_buffer_left := 0.0
 var coyote_left := 0.0
 var jump_key_down := false
@@ -549,6 +550,22 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, is_sprint:
 		planar_velocity = planar_velocity.normalized() * cap
 	return Vector3(planar_velocity.x,0.0,planar_velocity.y)
 
+func _process(delta: float) -> void:
+	# pawn_player(2).cs::Update(): poll keyboard at render-frame cadence,
+	# then move each input axis toward -1/0/1 at 10 units per second.
+	# Controller extras (anchored device) may suppress movement input.
+	var left_axis: float = float(Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT))
+	var right_axis: float = float(Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT))
+	var forward_axis: float = float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
+	var back_axis: float = float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
+	var target_x: float = right_axis - left_axis
+	var target_y: float = forward_axis - back_axis
+	if device != null and bool(device.call("is_busy")):
+		target_x = 0.0
+		target_y = 0.0
+	smoothed_strafe = move_toward(smoothed_strafe,target_x,delta * INPUT_SMOOTHING_PER_SEC)
+	smoothed_input = move_toward(smoothed_input,target_y,delta * INPUT_SMOOTHING_PER_SEC)
+
 func _physics_process(delta: float) -> void:
 	if mantle_active:
 		_update_mantle(delta)
@@ -567,8 +584,8 @@ func _physics_process(delta: float) -> void:
 	if device_busy:
 		raw_axis = 0.0
 		raw_strafe = 0.0
-	smoothed_input = move_toward(smoothed_input, raw_axis, INPUT_SMOOTHING_PER_SEC * delta)
-	smoothed_strafe = move_toward(smoothed_strafe, raw_strafe, INPUT_SMOOTHING_PER_SEC * delta)
+	# The Unity Update() equivalent (_process) owns smoothing; physics uses
+	# the last rendered smoothed input just like FixedUpdate() reads inputVec.
 	# Free bodily motion within a tile; tile crossing remains a world rule.
 	var input_vector := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
 	if device_busy:
@@ -684,6 +701,8 @@ func _physics_process(delta: float) -> void:
 		move_state = "WALK"
 
 	var horizontal_speed: float = Vector2(get_real_velocity().x,get_real_velocity().z).length()
+	# pawn_player(2).cs::LateUpdate(): anim.SetFloat("speed", velocity.magnitude).
+	source_anim_speed = horizontal_speed
 	if climbing:
 		_update_climb_pose(delta,climb_input)
 	elif crouching and is_on_floor():
