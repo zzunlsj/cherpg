@@ -44,6 +44,7 @@ jobs:
           set -euo pipefail
           test -s blender-results/pawn-direction-device-0.0.3v.blend
           test -s blender-results/pawn-direction-device-animated-0.0.3v.glb
+          test -s blender-results/pawn-direction-device-unified-animation-0.0.3v.glb
           test -s blender-results/direction-grounding-0.0.3v.json
           python3 - <<'PY'
           import json, pathlib, struct
@@ -54,5 +55,12 @@ jobs:
           assert len(data["foot_contacts"]) == 4
           glb=(root/"pawn-direction-device-animated-0.0.3v.glb").read_bytes()
           assert glb[:4] == b"glTF" and struct.unpack("<I",glb[4:8])[0] == 2
-          print("CHERPG_BLENDER_GLTF_EXPORT_VERIFIED",len(glb))
+          unified=(root/"pawn-direction-device-unified-animation-0.0.3v.glb").read_bytes()
+          assert unified[:4] == b"glTF"
+          import struct
+          json_len=struct.unpack_from("<I",unified,12)[0]
+          clip_doc=json.loads(unified[20:20+json_len])
+          assert len(clip_doc["animations"])==1
+          assert len(clip_doc["animations"][0]["channels"]) >= 40
+          print("CHERPG_BLENDER_GLTF_UNIFIED_ANIMATION_VERIFIED",len(clip_doc["animations"][0]["channels"]))
           PY
