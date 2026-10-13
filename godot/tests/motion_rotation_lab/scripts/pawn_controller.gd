@@ -549,7 +549,16 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, is_sprint:
 		force *= SOURCE_SPRINT_FORCE_MULT
 	source_force_vec = force
 	if force.length() >= SOURCE_MIN_FORCE:
-		planar_velocity += force * (delta * delta / mass)
+		var impulse_delta: Vector2 = force * (delta * delta / mass)
+		var predicted_velocity: Vector2 = planar_velocity + impulse_delta
+		# A direct 2D AddForce port can overshoot through zero on release:
+		# at 60 Hz, maxForce 20000 yields a ~5.56m/s brake step even from
+		# a 4m/s walk. That reverses velocity every frame (visible jitter).
+		# During release ONLY, clamp the sign-crossing impulse at zero.
+		if input_magnitude < SOURCE_MIN_FORCE 			and planar_velocity.length_squared() > 0.0 			and predicted_velocity.dot(planar_velocity) <= 0.0:
+			planar_velocity = Vector2.ZERO
+		else:
+			planar_velocity = predicted_velocity
 	# Preserve original speed clipping AFTER the force calculation.
 	var cap: float = WALK_MPS * (1.5 if is_sprint else 1.0)
 	if crouching:
