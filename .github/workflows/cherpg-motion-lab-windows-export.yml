@@ -38,6 +38,9 @@ jobs:
       - name: Verify camera-invariant climbing coordinates and Ctrl hold (short static check)
         run: python3 godot/tests/motion_rotation_lab/tests/test_wall_tangent_controls_quick.py
 
+      - name: Verify follow-camera wall sweeps and 6.8m orbit (static only)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_camera_wall_collision_quick.py
+
       - name: Import resources (build preparation only — no play testing)
         shell: bash
         run: |
