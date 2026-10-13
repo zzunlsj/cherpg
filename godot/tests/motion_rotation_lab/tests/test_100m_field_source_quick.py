@@ -17,9 +17,14 @@ assert "event.physical_keycode == KEY_F" in lab and 'request_toggle' in lab
 assert "KEY_A:" in lab and "KEY_D:" in lab and "request_turn" in lab
 assert "Input.is_key_pressed(KEY_F)" in lab and 'set_preview_held' in lab
 assert "KEY_R" not in lab
-assert "KEY_I:" in lab and "board_grid_visible" in terrain
-assert "KEY_O:" in lab and "KEY_SHIFT:" in lab and 'pawn.queue_dash()' in lab
-assert "func queue_dash()" in pawn and "DASH_COOLDOWN_SECONDS" in pawn
+assert "KEY_I:" in lab and "board_rules_enabled" in lab
+assert "func _constrain_step(" in pawn and "if board_rules_enabled:" in pawn
+assert 'board_grid_visible = true' in terrain and '"board_visible", 1.0' in terrain
+assert "KEY_O:" in lab and "KEY_SHIFT:" not in lab and "KEY_CTRL:" not in lab
+assert "Input.is_key_pressed(KEY_CTRL)" in pawn
+assert "Input.is_key_pressed(KEY_SHIFT)" in pawn
+assert "func _update_crouch_collider(" in pawn and "func _can_stand()" in pawn
+assert "func _update_crouch_pose(" in pawn and "func _clamp_anatomical_joints()" in pawn
 assert "MAX_ASCENT_ANGLE_DEG := 90.0" in pawn
 assert "func _wall_contact(" in pawn
 assert "cherpg_grabbable" in pawn and "cherpg_grabbable" in terrain
