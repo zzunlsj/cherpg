@@ -37,9 +37,11 @@ const NORMAL_FLOOR_CUTOFF_DEG := 29.5  # >=30° requires grabbable contact-climb
 const WALL_CLIMB_MPS := 2.5
 const CLIMB_MIN_ANGLE_DEG := 30.0
 const GRAB_REACH_M := 0.95
-const DASH_SPEED_MPS := 10.5
-const DASH_SECONDS := 0.20
-const DASH_COOLDOWN_SECONDS := 0.85
+const CROUCH_MPS := 1.8
+const STANDING_HEIGHT_M := 1.43
+const CROUCH_HEIGHT_M := 1.02
+const CROUCH_TRANSITION_RATE := 7.5
+const MAX_KNEE_FLEX_RAD := 1.65
 const HEADING_NAMES := ["NORTH / -Z", "EAST / +X", "SOUTH / +Z", "WEST / -X"]
 const HEADINGS := [Vector3.FORWARD, Vector3.RIGHT, Vector3.BACK, Vector3.LEFT]
 var heading_index := 0
@@ -67,9 +69,12 @@ var airborne_time := 0.0
 var landing_visual := 0.0
 var takeoff_visual := 0.0
 var jump_state := "GROUNDED"
-var dash_timer := 0.0
-var dash_cooldown := 0.0
-var dash_direction := Vector3.FORWARD
+var board_rules_enabled := true
+var crouching := false
+var running := false
+var crouch_blend := 0.0
+var capsule_shape: CapsuleShape3D
+var capsule_collider: CollisionShape3D
 var climbing := false
 var climb_normal := Vector3.ZERO
 var ground_normal := Vector3.UP
@@ -94,14 +99,14 @@ func _ready() -> void:
 	floor_snap_length = 0.24
 	floor_max_angle = deg_to_rad(NORMAL_FLOOR_CUTOFF_DEG)
 	floor_stop_on_slope = true
-	var capsule := CapsuleShape3D.new()
-	capsule.radius = 0.235
-	capsule.height = 1.43
-	var collider := CollisionShape3D.new()
-	collider.name = "PawnCollisionCapsule"
-	collider.shape = capsule
-	collider.position.y = capsule.height * 0.5 # capsule bottom aligns with character root
-	add_child(collider)
+	capsule_shape = CapsuleShape3D.new()
+	capsule_shape.radius = 0.235
+	capsule_shape.height = STANDING_HEIGHT_M
+	capsule_collider = CollisionShape3D.new()
+	capsule_collider.name = "PawnCollisionCapsule"
+	capsule_collider.shape = capsule_shape
+	capsule_collider.position.y = STANDING_HEIGHT_M * 0.5
+	add_child(capsule_collider)
 	stone = _mat(Color("b5b4ab"), 0.0)
 	ivory = _mat(Color("e2dac7"), 0.0)
 	iron = _mat(Color("444c53"), 0.45)
@@ -217,20 +222,32 @@ func queue_jump() -> void:
 func release_jump() -> void:
 	jump_key_down = false
 
-func queue_dash() -> void:
-	if dash_cooldown > 0.0 or dash_timer > 0.0 or not is_on_floor():
-		return
-	if device != null and bool(device.call("is_busy")):
-		return
-	var input_dir := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
-	if input_dir.length() < 0.12:
-		input_dir = Vector2(0.0,1.0)
-	var fwd := _camera_flat_forward()
-	dash_direction = (fwd * input_dir.y + fwd.cross(Vector3.UP) * input_dir.x).normalized()
-	if dash_direction.length_squared() < 0.01:
-		return
-	dash_timer = DASH_SECONDS
-	dash_cooldown = DASH_COOLDOWN_SECONDS
+func _can_stand() -> bool:
+	# Sweep/test a taller shape without relocating the character. The collider
+	# bottom remains at y=0 in both poses, and obstacles block standing up.
+	var stand_capsule := CapsuleShape3D.new()
+	stand_capsule.radius = capsule_shape.radius
+	stand_capsule.height = STANDING_HEIGHT_M
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = stand_capsule
+	query.transform = Transform3D(Basis.IDENTITY,
+		global_position + Vector3.UP * (STANDING_HEIGHT_M * 0.5 + 0.015))
+	query.collision_mask = collision_mask
+	query.exclude = [get_rid()]
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	return get_world_3d().direct_space_state.intersect_shape(query,1).is_empty()
+
+func _update_crouch_collider(delta: float, requested: bool) -> void:
+	if requested:
+		crouching = true
+	elif not crouching or _can_stand():
+		crouching = false
+	var target := 1.0 if crouching else 0.0
+	crouch_blend = move_toward(crouch_blend,target,CROUCH_TRANSITION_RATE*delta)
+	var height: float = lerpf(STANDING_HEIGHT_M,CROUCH_HEIGHT_M,crouch_blend)
+	capsule_shape.height = height
+	capsule_collider.position.y = height * 0.5
 
 func _wall_contact(move_forward: Vector3) -> Dictionary:
 	# Contact alone is not enough: collider must explicitly be grabbable.
@@ -277,7 +294,7 @@ func _try_climb_top_ledge(forward: Vector3) -> void:
 		return
 	var landing: Vector3 = global_position + forward * 1.08
 	landing.y = roof_y + 0.055
-	var permitted: Dictionary = BOARD_RULES.constrain_voluntary(global_position,landing,board_origin,heading_index)
+	var permitted: Dictionary = _constrain_step(global_position,landing)
 	if bool(permitted["resisted"]):
 		return
 	global_position = permitted["position"]
@@ -308,10 +325,18 @@ func _camera_flat_forward() -> Vector3:
 func _horizontal_velocity() -> Vector3:
 	return Vector3(velocity.x, 0.0, velocity.z)
 
+func _constrain_step(from_position: Vector3, to_position: Vector3) -> Dictionary:
+	# I changes logical tile collision only; visual 4m checker stays intact.
+	if board_rules_enabled:
+		return BOARD_RULES.constrain_voluntary(from_position,to_position,board_origin,heading_index)
+	return {"position":to_position,"resisted":false,"blocked_x":false,"blocked_z":false}
+
 ## Independent testable planar physics adapter for the Unity movement feel.
 ## Godot move_and_slide() will handle final collider response after this update.
 func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bool, delta: float, floor: bool, slope_multiplier: float) -> Vector3:
 	var speed_cap: float = (RUN_MPS if sprint else WALK_MPS) * slope_multiplier
+	if crouching:
+		speed_cap = minf(speed_cap,CROUCH_MPS)
 	var forward: Vector3 = _camera_flat_forward()
 	var right: Vector3 = forward.cross(Vector3.UP)
 	var intended: Vector3 = (right * input_vector.x + forward * input_vector.y).limit_length(1.0)
@@ -341,8 +366,9 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bo
 	return next
 
 func _physics_process(delta: float) -> void:
-	dash_cooldown = maxf(0.0,dash_cooldown-delta)
-	dash_timer = maxf(0.0,dash_timer-delta)
+	_update_crouch_collider(delta,Input.is_key_pressed(KEY_SHIFT))
+	# Ctrl takes priority as a sustained run/climb input; Shift crouch prevents running.
+	running = Input.is_key_pressed(KEY_CTRL) and not crouching
 	var was_on_floor: bool = is_on_floor()
 	var fwd: float = float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
 	var back: float = float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
@@ -360,17 +386,16 @@ func _physics_process(delta: float) -> void:
 	var input_vector := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
 	if device_busy:
 		input_vector = Vector2.ZERO
-	var wants_run: bool = dash_timer > 0.0  # Shift is a short dash, never hold-to-sprint
+	var wants_run: bool = running and (not is_zero_approx(raw_axis) or not is_zero_approx(raw_strafe))
 	latest_axis = input_vector.y
 	latest_sprint = wants_run
 	var forward: Vector3 = _camera_flat_forward()
 	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
-	var contact: Dictionary = _wall_contact(forward) if raw_axis > 0.35 and not device_busy else {}
-	# Airborne grabbing is allowed on a confirmed grabbable contact.
-	climbing = not contact.is_empty() and dash_timer <= 0.0
+	var contact: Dictionary = _wall_contact(forward) if raw_axis > 0.35 and running and not device_busy else {}
+	# Grabbing requires Ctrl + forward movement + tagged surface 30° or steeper.
+	climbing = not contact.is_empty()
 	if climbing:
 		climb_normal = contact["normal"]
-		dash_timer = 0.0
 
 	if was_on_floor:
 		ground_normal = get_floor_normal()
@@ -413,16 +438,14 @@ func _physics_process(delta: float) -> void:
 	var slope_factor: float = 1.0-clampf(uphill*0.65,-0.10,0.26)
 	var current_horizontal: Vector3 = _horizontal_velocity()
 
-	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, false, delta, was_on_floor, slope_factor)
-	if dash_timer > 0.0 and not device_busy:
-		next_horizontal = dash_direction * DASH_SPEED_MPS
+	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, wants_run, delta, was_on_floor, slope_factor)
 	if climbing:
 		var tangent_up: Vector3 = (Vector3.UP - climb_normal * climb_normal.y).normalized()
 		next_horizontal = Vector3(tangent_up.x,0.0,tangent_up.z) * WALL_CLIMB_MPS 			- Vector3(climb_normal.x,0.0,climb_normal.z) * 0.18
 	if device_busy:
 		next_horizontal = Vector3.ZERO
 	var starting_position: Vector3 = global_position
-	var prediction: Dictionary = BOARD_RULES.constrain_voluntary(starting_position, starting_position + next_horizontal * delta, board_origin, heading_index)
+	var prediction: Dictionary = _constrain_step(starting_position,starting_position+next_horizontal*delta)
 	var projected_pos: Vector3 = prediction["position"]
 	next_horizontal = (projected_pos - starting_position) / maxf(delta, 0.000001)
 	velocity.x = next_horizontal.x
@@ -430,7 +453,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_try_climb_top_ledge(forward)
 	# Physical collision resolution and airborne drift must obey the same rule.
-	var resolved: Dictionary = BOARD_RULES.constrain_voluntary(starting_position, global_position, board_origin, heading_index)
+	var resolved: Dictionary = _constrain_step(starting_position,global_position)
 	var allowed_position: Vector3 = resolved["position"]
 	var resisted: bool = bool(prediction["resisted"]) or bool(resolved["resisted"])
 	if bool(resolved["blocked_x"]):
@@ -454,8 +477,8 @@ func _physics_process(delta: float) -> void:
 		jump_state = "GROUNDED"
 	if climbing:
 		move_state = "CLIMB"
-	elif dash_timer > 0.0 and is_on_floor():
-		move_state = "DASH"
+	elif crouching and is_on_floor():
+		move_state = "CROUCH MOVE" if _horizontal_velocity().length() > 0.10 else "CROUCH"
 	elif not is_on_floor():
 		move_state = "JUMP" if velocity.y > 0.05 else "FALL"
 	elif _horizontal_velocity().length() < 0.12 and input_vector.length() < SOURCE_MIN_FORCE:
@@ -468,11 +491,15 @@ func _physics_process(delta: float) -> void:
 	var horizontal_speed: float = Vector2(get_real_velocity().x,get_real_velocity().z).length()
 	if climbing:
 		_update_climb_pose(delta)
+	elif crouching and is_on_floor():
+		_update_crouch_pose(delta,horizontal_speed,input_vector.length())
 	elif is_on_floor():
 		_update_gait(delta,horizontal_speed,wants_run,input_vector.length())
 	else:
 		_update_air_pose(delta)
 	_apply_attack_pose(delta)
+	_clamp_anatomical_joints()
+	avatar.scale.y = lerpf(1.0,0.80,crouch_blend)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
 
@@ -629,8 +656,12 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	resistance_attempts = 0
 	smoothed_strafe = 0.0
 	gait_clock = 0.0
-	dash_timer = 0.0
-	dash_cooldown = 0.0
+	crouching = false
+	running = false
+	crouch_blend = 0.0
+	capsule_shape.height = STANDING_HEIGHT_M
+	capsule_collider.position.y = STANDING_HEIGHT_M*0.5
+	avatar.scale = Vector3.ONE
 	climbing = false
 	run_blend = 0.0
 	attack_timer = 0.0
