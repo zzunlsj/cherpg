@@ -129,14 +129,20 @@ func _update_camera(delta: float) -> void:
 	var desired := camera_target + lateral * camera_distance * cos(camera_elevation) + Vector3.UP * camera_distance * sin(camera_elevation)
 	# First clamp desired orbit against walls/floors/ceilings. Pull forward
 	# immediately on collision; restore the normal 6.8m orbit gradually.
-	var obstacle_safe: Vector3 = _camera_collision_clamp(camera_target,desired)
+	# A climber stands almost against the wall. Cast from a pivot shifted
+	# slightly toward the wall's outward normal to avoid starting the camera
+	# sweep embedded in the contacted surface.
+	var sweep_pivot: Vector3 = camera_target
+	if pawn.climbing:
+		sweep_pivot += pawn.climb_normal * 0.11
+	var obstacle_safe: Vector3 = _camera_collision_clamp(sweep_pivot,desired)
 	var safe_distance: float = camera_target.distance_to(obstacle_safe)
 	camera_wall_blocked = safe_distance < camera_distance - 0.10
 	var speed: float = CAMERA_FOLLOW_SPEED if camera_wall_blocked else CAMERA_RECOVER_SPEED
 	var interpolated: Vector3 = camera.global_position.lerp(obstacle_safe,clampf(delta*speed,0.0,1.0))
 	# Smoothing/orbit rotation itself might sweep the camera through a wall.
 	# Clamp the interpolated final camera as well, not just the desired arm.
-	camera.global_position = _camera_collision_clamp(camera_target,interpolated)
+	camera.global_position = _camera_collision_clamp(sweep_pivot,interpolated)
 	camera_actual_distance = camera.global_position.distance_to(camera_target)
 	# Keep the Pawn in view even when a wall forces a very close camera.
 	camera.fov = lerpf(80.0,65.0,clampf((camera_actual_distance-0.65)/2.5,0.0,1.0))
