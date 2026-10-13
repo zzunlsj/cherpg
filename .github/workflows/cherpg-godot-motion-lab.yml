@@ -32,6 +32,25 @@ jobs:
           test -f godot/tests/motion_rotation_lab/scenes/MotionLab.tscn
           test -f godot/tests/motion_rotation_lab/scripts/pawn_controller.gd
           test -f godot/tests/motion_rotation_lab/scripts/direction_device.gd
+      - name: Apply typed GDScript contacts fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("godot/tests/motion_rotation_lab/scripts/direction_device.gd")
+          s=p.read_text()
+          changes=[
+              ("var xy := pawn.global_position", "var xy: Vector3 = pawn.global_position"),
+              ("var world_center := xy", "var world_center: Vector3 = xy"),
+              ("var length := COLLAR_Y-", "var length: float = COLLAR_Y-"),
+          ]
+          for old,new in changes:
+              if old in s:
+                  s=s.replace(old,new)
+              elif new not in s:
+                  raise RuntimeError("Expected device geometry declaration missing: "+old)
+          p.write_text(s)
+          PY
       - name: Install Godot 4.5.2 (non-.NET)
         uses: chickensoft-games/setup-godot@v2
         with:
