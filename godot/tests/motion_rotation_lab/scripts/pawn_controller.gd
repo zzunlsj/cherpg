@@ -411,6 +411,7 @@ func _update_mantle_pose(t: float, delta: float) -> void:
 		knee[i].rotation.x = lerpf(knee[i].rotation.x,knee_bend,blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,.12*(1.0-settle),blend)
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,arm,blend)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,lerpf(0.12,1.05,reach)*(1.0-settle),blend)
 		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z,(-.13 if i==0 else .13)*reach*(1.0-settle),blend)
 	avatar.rotation.x = lerpf(avatar.rotation.x,lerpf(-.12,-.29,lift)*(1.0-settle),blend)
 	avatar.position.y = lerpf(avatar.position.y,-.04*lift*(1.0-settle),blend)
@@ -617,6 +618,7 @@ func _physics_process(delta: float) -> void:
 	_clamp_anatomical_joints()
 	avatar.scale.y = lerpf(1.0,0.67,crouch_blend)
 	_apply_terrain_pose(delta)
+	_apply_surface_tilt(delta)
 	_prevent_part_penetration(delta)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
@@ -648,7 +650,8 @@ func _update_climb_pose(delta: float) -> void:
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,.40 + .33*sin(phase),blend)
 		knee[i].rotation.x = lerpf(knee[i].rotation.x,-(.78 + .17*cos(phase)),blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,-.20,blend)
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-1.05 + .25*sin(phase+PI),blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,0.80 + .25*sin(phase+PI),blend)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,.55 + .18*cos(phase),blend)
 	avatar.rotation.x = lerpf(avatar.rotation.x,-.12 - .22 * (1.0-climb_normal.y),blend)
 	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
 
@@ -666,6 +669,7 @@ func _update_air_pose(delta: float) -> void:
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, hip_target, smooth)
 		knee[i].rotation.x = lerpf(knee[i].rotation.x, -absf(knee_target), smooth)
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, arm_target, smooth)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x, .24 + .22*descent, smooth)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x, -0.22 if rising else 0.12, smooth)
 		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z, lead * 0.10, smooth)
 	avatar.rotation.x = lerpf(avatar.rotation.x, -0.05 if rising else 0.045, minf(1.0, delta * 6.5))
@@ -741,6 +745,7 @@ func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: fl
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,foot_target,blend)
 		# Right arm moves forward with left thigh (counter-swing).
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-thigh * .68,blend)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,.08 + .45*run_blend*activity,blend)
 		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z,(1.0 if i == 0 else -1.0) * .038 * activity,blend)
 	# Alternating support allows small centre-of-mass bob and lateral shift.
 	var support: float = absf(sin(phase * TAU))
@@ -768,7 +773,8 @@ func _update_crouch_pose(delta: float, horizontal_speed: float, axis: float) -> 
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,hip_target,blend)
 		knee[i].rotation.x = lerpf(knee[i].rotation.x,flex_target,blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,0.19,blend)
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-0.23 - 0.08*phase_swing,blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,0.21 - 0.08*phase_swing,blend)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,.39,blend)
 	avatar.rotation.x = lerpf(avatar.rotation.x,0.09,blend)
 	avatar.rotation.z = lerpf(avatar.rotation.z,0.01*sin(gait_clock)*crawl_activity,blend)
 	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
@@ -783,6 +789,7 @@ func _clamp_anatomical_joints() -> void:
 		feet[i].rotation.x = clampf(feet[i].rotation.x,-0.50,0.48)
 		shoulder[i].rotation.x = clampf(shoulder[i].rotation.x,-1.60,1.20)
 		shoulder[i].rotation.z = clampf(shoulder[i].rotation.z,-0.28,0.28)
+		elbow[i].rotation.x = clampf(elbow[i].rotation.x,0.0,1.95)
 	avatar.rotation.x = clampf(avatar.rotation.x,-0.38,0.18)
 	avatar.rotation.z = clampf(avatar.rotation.z,-0.10,0.10)
 
@@ -943,6 +950,19 @@ func _apply_terrain_pose(delta: float) -> void:
 		# Lift visual rig only; never teleport the physics root through solids.
 		avatar.position.y += minf(.055,lift_required)*minf(1.0,delta*16.0)
 
+func _apply_surface_tilt(delta: float) -> void:
+	# All grounded animation states share the current terrain normal.
+	# Only tilt the visual rig; the physical capsule remains upright.
+	if not is_on_floor() or mantle_active or climbing:
+		return
+	var normal_world: Vector3 = get_floor_normal()
+	if normal_world.y <= 0.55:
+		return
+	var relative: Vector3 = Basis(Vector3.UP,avatar.rotation.y).inverse()*normal_world
+	var desired_pitch: float = clampf(atan2(relative.z,relative.y)*0.30,-0.16,0.16)
+	avatar.rotation.x = lerpf(avatar.rotation.x,
+		clampf(avatar.rotation.x+desired_pitch,-0.38,0.18),minf(1.0,delta*6.0))
+
 func _apply_attack_pose(delta: float) -> void:
 	# Left-click input from pawn_player.cs: right arm swings once, retriggerable.
 	attack_timer = maxf(0.0, attack_timer - delta)
@@ -953,6 +973,7 @@ func _apply_attack_pose(delta: float) -> void:
 		var strike: float = pow(maxf(0.0, sin(elapsed * PI)), 1.3)
 		shoulder[1].rotation.x = lerpf(shoulder[1].rotation.x, -1.35 * strike, minf(1.0, delta * 24.0))
 		shoulder[1].rotation.z = lerpf(shoulder[1].rotation.z, -0.18 * strike, minf(1.0, delta * 18.0))
+		elbow[1].rotation.x = lerpf(elbow[1].rotation.x,0.25 + 0.60*strike,minf(1.0,delta*18.0))
 
 func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void:
 	global_position = Vector3(world_x, base_y + SPAWN_CLEARANCE_M, world_z)
