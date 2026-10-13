@@ -41,6 +41,9 @@ jobs:
       - name: Verify follow-camera wall sweeps and 6.8m orbit (static only)
         run: python3 godot/tests/motion_rotation_lab/tests/test_camera_wall_collision_quick.py
 
+      - name: Check uploaded Unity pawn_player(2).cs force-port formulas (fast static)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_unity_pawn_player2_port_quick.py
+
       - name: Import resources (build preparation only — no play testing)
         shell: bash
         run: |
