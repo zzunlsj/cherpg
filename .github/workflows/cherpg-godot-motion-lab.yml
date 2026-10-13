@@ -51,6 +51,25 @@ jobs:
                   raise RuntimeError("Expected device geometry declaration missing: "+old)
           p.write_text(s)
           PY
+      - name: Add early-failure floor diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("godot/tests/motion_rotation_lab/scripts/motion_lab.gd")
+          s=p.read_text()
+          before='\tassert(pawn.is_on_floor(),"Pawn did not reach ground before anchor test")'
+          after="""\tvar ray := PhysicsRayQueryParameters3D.create(pawn.global_position+Vector3.UP*2.0,pawn.global_position+Vector3.DOWN*4.0,1,[pawn.get_rid()])
+\tvar ground_hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
+\tprint("CHERPG_FLOOR_DIAGNOSTIC position=",pawn.global_position," velocity=",pawn.velocity," grounded=",pawn.is_on_floor()," ray_hit=",ground_hit.get("position","NONE"))
+\tif not pawn.is_on_floor():
+\t\tpush_error("Pawn did not reach ground before anchor test")
+\t\tget_tree().quit(1)
+\t\treturn"""
+          if before not in s:
+              raise RuntimeError("Expected smoke test assertion missing")
+          p.write_text(s.replace(before,after))
+          PY
       - name: Install Godot 4.5.2 (non-.NET)
         uses: chickensoft-games/setup-godot@v2
         with:
@@ -70,7 +89,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 120s godot --headless --path godot/tests/motion_rotation_lab -- --smoke-test 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+          timeout 35s godot --headless --path godot/tests/motion_rotation_lab --quit-after 1200 -- --smoke-test 2>&1 | tee "$RUNNER_TEMP/smoke.log"
           grep -F 'CHERPG_GODOT_TESTMAP_SMOKE_OK' "$RUNNER_TEMP/smoke.log"
           if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Assertion failed' "$RUNNER_TEMP/smoke.log"; then
             exit 1
