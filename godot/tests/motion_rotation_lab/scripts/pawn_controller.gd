@@ -244,8 +244,8 @@ func _wall_contact(move_forward: Vector3) -> Dictionary:
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
 	if hit.is_empty():
 		return {}
-	var hit_body: Object = hit["collider"]
-	if not is_instance_valid(hit_body) or not hit_body is CollisionObject3D:
+	var hit_body: CollisionObject3D = hit.get("collider") as CollisionObject3D
+	if hit_body == null or not is_instance_valid(hit_body):
 		return {}
 	if not hit_body.is_in_group("cherpg_grabbable"):
 		return {}
