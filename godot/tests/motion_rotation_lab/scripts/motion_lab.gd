@@ -15,7 +15,7 @@ const CAMERA_ELEVATION_MIN := -PI / 7.2
 const CAMERA_ELEVATION_MAX := PI / 2.0
 var camera_distance := 6.8
 var camera_target := Vector3.ZERO
-var grid_debug_visible := true
+var board_rules_enabled := true
 var active_station := 0
 
 func _ready() -> void:
@@ -31,6 +31,7 @@ func _ready() -> void:
 	camera.current = true
 	add_child(camera)
 	pawn.set_movement_camera(camera)
+	pawn.board_rules_enabled = board_rules_enabled
 	_teleport_to_station(0)
 	_build_ui()
 	camera_target = pawn.global_position + Vector3.UP * 1.1
@@ -73,7 +74,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "WASD: camera move | Hold F: installation footprint | Release F: deploy / stow anchors\nAnchored A / D: heading -/+90° | I: toggle 4m chess tile borders | O: reset | Shift: dash\nSpace: jump | 1-9,0: 10 test zones, 100m x 100m, 25x25 cells | Mouse: orbit 90°\nClick: attack gesture | Z/C: body-only rotate | Esc: release mouse"
+	help_label.text = "WASD: camera movement | Ctrl (hold): RUN / CLIMB grabbable 30°+ surfaces\nShift (hold): CROUCH | I: movement constraints ON/OFF (tile pattern stays visible)\nHold F: anchor clearance preview | Release F: install/stow | Anchored A/D: turn heading\nO: reset | Space: jump | 1-9,0: stations | Mouse: orbit | Esc: cursor"
 	help_label.add_theme_font_size_override("font_size",14)
 	content.add_child(help_label)
 	_update_hud()
@@ -139,8 +140,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				pawn.device.call("request_turn",1)
 		KEY_O:
 			_teleport_to_station(active_station)
-		KEY_SHIFT:
-			pawn.queue_dash()
 		KEY_1,KEY_2,KEY_3,KEY_4,KEY_5,KEY_6,KEY_7,KEY_8,KEY_9:
 			_teleport_to_station(int(event.physical_keycode)-int(KEY_1))
 		KEY_0:
@@ -150,8 +149,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_C:
 			pawn.rotate_body_only(90.0)
 		KEY_I:
-			grid_debug_visible = not grid_debug_visible
-			terrain.call("set_board_debug_visible",grid_debug_visible)
+			board_rules_enabled = not board_rules_enabled
+			pawn.board_rules_enabled = board_rules_enabled
 		KEY_ESCAPE:
 			var mode := Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 			Input.set_mouse_mode(mode)
@@ -170,11 +169,11 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.14v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.15v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "CAMERA: %.0f°/90° | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
-		+ "TILE: (%d,%d) | %s | GRID: %s | F: %s | DASH CD: %.1fs" % [pawn.current_cell.x,pawn.current_cell.y,rule_status,("ON" if grid_debug_visible else "OFF"),pawn.device.preview_reason,pawn.dash_cooldown]
+		+ "TILE: (%d,%d) | MOVE LIMIT: %s | F: %s | STANCE: %s | RUN: %s" % [pawn.current_cell.x,pawn.current_cell.y,("ON / "+rule_status if board_rules_enabled else "OFF"),pawn.device.preview_reason,("CROUCH" if pawn.crouching else "STAND"),("YES" if pawn.running else "NO")]
 
 func _run_smoke_test() -> void:
 	# User invoked via --smoke-test. Short structure-only check; no long playtest.
@@ -184,5 +183,5 @@ func _run_smoke_test() -> void:
 	assert(pawn.device.components.size() == 4)
 	for i in range(int(terrain.call("spawn_count"))):
 		assert(terrain.call("spawn_position",i) is Vector3)
-	print("CHERPG_100X100_2M_GRID_STRUCTURE_OK (USER PLAYTEST REQUIRED)")
+	print("CHERPG_100X100_4M_GRID_STRUCTURE_OK (USER PLAYTEST REQUIRED)")
 	get_tree().quit(0)
