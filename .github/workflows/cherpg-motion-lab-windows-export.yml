@@ -53,6 +53,13 @@ jobs:
           assert p.stat().st_size > 1000000, "Exported EXE unexpectedly small"
           pcks=list(p.parent.glob('*.pck'))
           assert not pcks, f"Expected embedded PCK, got external resources: {pcks}"
+          payload=p.read_bytes()
+          company_key="CompanyName".encode("utf-16le")
+          company_value="CheRPG".encode("utf-16le")
+          loc=payload.find(company_key)
+          assert loc >= 0, "PE VERSIONINFO CompanyName resource is missing"
+          assert company_value in payload[loc:loc+100], "PE publisher/company resource is not CheRPG"
+          print("CHERPG_WINDOWS_COMPANY_METADATA_VERIFIED CheRPG")
           print(f"CHERPG_WINDOWS_EXE_EXPORT_OK {p.stat().st_size} bytes")
           PY
           
