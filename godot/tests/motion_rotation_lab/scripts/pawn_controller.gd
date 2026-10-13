@@ -242,6 +242,32 @@ func _wall_contact(camera_forward: Vector3) -> Dictionary:
 		return {}
 	return hit
 
+func _try_climb_top_ledge(forward: Vector3) -> void:
+	# The 90° test wall has a solid landing deck at y=3m. Transfer onto it
+	# once the feet are near the top. Still obey voluntary board step limits.
+	if not climbing:
+		return
+	var ray_start: Vector3 = global_position + Vector3.UP*1.7 + forward*1.0
+	var ray_end: Vector3 = ray_start + Vector3.DOWN*2.8
+	var query := PhysicsRayQueryParameters3D.create(ray_start,ray_end,1,[get_rid()])
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return
+	var normal: Vector3 = hit["normal"]
+	var roof_y: float = hit["position"].y
+	var remaining: float = roof_y - global_position.y
+	if normal.y < .88 or roof_y < 1.0 or remaining > .50 or remaining < -.12:
+		return
+	var landing: Vector3 = global_position + forward * 1.08
+	landing.y = roof_y + 0.055
+	var permitted: Dictionary = BOARD_RULES.constrain_voluntary(global_position,landing,board_origin,heading_index)
+	if bool(permitted["resisted"]):
+		return
+	global_position = permitted["position"]
+	velocity = Vector3.ZERO
+	climbing = false
+	jump_state = "GROUNDED"
+
 func trigger_attack() -> void:
 	# Unity source: ResetTrigger("attack"), then SetTrigger("attack").
 	# Placeholder arm motion; no combat hitbox or damage is invented.
@@ -381,6 +407,7 @@ func _physics_process(delta: float) -> void:
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
 	move_and_slide()
+	_try_climb_top_ledge(forward)
 	# Physical collision resolution and airborne drift must obey the same rule.
 	var resolved: Dictionary = BOARD_RULES.constrain_voluntary(starting_position, global_position, board_origin, heading_index)
 	var allowed_position: Vector3 = resolved["position"]
