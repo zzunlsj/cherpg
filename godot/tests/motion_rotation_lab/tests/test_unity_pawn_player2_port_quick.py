@@ -27,7 +27,8 @@ tokens=(
     "if force.length() < SOURCE_MIN_FORCE:",
     "planar_velocity = Vector2.ZERO",
     "force *= SOURCE_SPRINT_FORCE_MULT",
-    "planar_velocity += force * (delta * delta / mass)",
+    "var impulse_delta: Vector2 = force * (delta * delta / mass)",
+    "predicted_velocity.dot(planar_velocity) <= 0.0",
     "var cap: float = WALK_MPS * (1.5 if is_sprint else 1.0)",
     "return Vector3(planar_velocity.x,0.0,planar_velocity.y)",
     "source_anim_speed = horizontal_speed",
@@ -62,7 +63,8 @@ def reference_step(v, inp, sprint=False, dt=1/60, mass=1., gravity_scale=1., cro
     elif sprint:
         force=tuple(f*2 for f in force)
     if hypot(*force)>=.1:
-        v=tuple(v[i]+force[i]*dt*dt/mass for i in (0,1))
+        predicted=tuple(v[i]+force[i]*dt*dt/mass for i in (0,1))
+        v=(0.,0.) if inp_mag<.1 and hypot(*v)>0 and sum(predicted[i]*v[i] for i in (0,1))<=0 else predicted
     cap=min((6. if sprint else 4.),1.8) if crouch else (6. if sprint else 4.)
     size=hypot(*v)
     if size>cap: v=tuple(n*cap/size for n in v)
@@ -74,4 +76,5 @@ assert isclose(hypot(*reference_step((0.,0.),(1.,1.))),4.)
 assert hypot(*reference_step((0.,0.),(0.,1.),crouch=True))<=1.8
 assert reference_step((0.,0.),(0.,1.),sprint=True,crouch=True)==(0.,1.8)
 assert reference_step((0.06,0.),(0.,0.))==(0.,0.)
+assert reference_step((4.0,0.0),(0.,0.))==(0.,0.), "4m/s must STOP, not reverse/oscillate after W release"
 print("CHERPG_UNITY_PAWN_PLAYER2_FORCE_PORT_STATIC_OK (NOT A PLAYTEST)")
