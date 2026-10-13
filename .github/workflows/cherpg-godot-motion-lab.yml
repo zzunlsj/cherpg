@@ -59,13 +59,7 @@ jobs:
           p=Path("godot/tests/motion_rotation_lab/scripts/motion_lab.gd")
           s=p.read_text()
           before='\tassert(pawn.is_on_floor(),"Pawn did not reach ground before anchor test")'
-          after="""\tvar ray := PhysicsRayQueryParameters3D.create(pawn.global_position+Vector3.UP*2.0,pawn.global_position+Vector3.DOWN*4.0,1,[pawn.get_rid()])
-\tvar ground_hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
-\tprint("CHERPG_FLOOR_DIAGNOSTIC position=",pawn.global_position," velocity=",pawn.velocity," grounded=",pawn.is_on_floor()," ray_hit=",ground_hit.get("position","NONE"))
-\tif not pawn.is_on_floor():
-\t\tpush_error("Pawn did not reach ground before anchor test")
-\t\tget_tree().quit(1)
-\t\treturn"""
+          after = '\tvar ray := PhysicsRayQueryParameters3D.create(pawn.global_position+Vector3.UP*2.0,pawn.global_position+Vector3.DOWN*4.0,1,[pawn.get_rid()])\n\tvar ground_hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)\n\tprint("CHERPG_FLOOR_DIAGNOSTIC position=",pawn.global_position," velocity=",pawn.velocity," grounded=",pawn.is_on_floor()," ray_hit=",ground_hit.get("position","NONE"))\n\tif not pawn.is_on_floor():\n\t\tpush_error("Pawn did not reach ground before anchor test")\n\t\tget_tree().quit(1)\n\t\treturn'
           if before not in s:
               raise RuntimeError("Expected smoke test assertion missing")
           p.write_text(s.replace(before,after))
