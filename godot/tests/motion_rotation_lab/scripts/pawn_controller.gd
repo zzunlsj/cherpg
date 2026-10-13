@@ -700,18 +700,35 @@ func apply_forced_displacement(delta_world: Vector3) -> void:
 	move_and_collide(delta_world)
 	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 
-func _update_climb_pose(delta: float) -> void:
-	# Deliberately exaggerated basic-joint motion on a true vertical wall.
-	gait_clock += delta * 5.6
-	var blend := minf(1.0,delta*12.0)
+func _update_climb_pose(delta: float, wall_inputs: Vector2) -> void:
+	# Climb locomotion runs in the wall's locked tangent frame:
+	# Ctrl alone is a quiet two-hand/two-foot static hanging pose;
+	# W/S alternate reaches vertically, A/D traverse sideways.
+	var wall_activity: float = clampf(wall_inputs.length(),0.0,1.0)
+	var vertical_drive: float = wall_inputs.y
+	var lateral_drive: float = wall_inputs.x
+	if wall_activity > 0.02:
+		gait_clock = fposmod(gait_clock + delta * 5.2 * wall_activity,TAU)
+	var blend: float = minf(1.0,delta*11.0)
 	for i in range(2):
+		var alternating: float = 1.0 if i == 0 else -1.0
 		var phase: float = gait_clock + (0.0 if i == 0 else PI)
-		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,.40 + .33*sin(phase),blend)
-		knee[i].rotation.x = lerpf(knee[i].rotation.x,-(.78 + .17*cos(phase)),blend)
-		feet[i].rotation.x = lerpf(feet[i].rotation.x,-.20,blend)
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,0.80 + .25*sin(phase+PI),blend)
-		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,.55 + .18*cos(phase),blend)
-	avatar.rotation.x = lerpf(avatar.rotation.x,-.12 - .22 * (1.0-climb_normal.y),blend)
+		var swing: float = sin(phase) * wall_activity
+		var lateral: float = lateral_drive * alternating
+		# All bends respect the previous anatomical joint limits.
+		var thigh: float = 0.48 + swing * 0.25 * vertical_drive + lateral * 0.09
+		var knee_bend: float = -(0.94 + maxf(0.0,swing*vertical_drive)*0.16)
+		var shoulder_reach: float = 0.92 + swing * 0.22 * vertical_drive + lateral * 0.10
+		var elbow_bend: float = 0.66 - swing * 0.12 * vertical_drive
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,thigh,blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,knee_bend,blend)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,-0.18,blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,shoulder_reach,blend)
+		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z,lateral * 0.11,blend)
+		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,elbow_bend,blend)
+	# Grip pose stays attached without oscillating when only Ctrl is held.
+	avatar.rotation.x = lerpf(avatar.rotation.x,-0.14 - .14*(1.0-climb_normal.y),blend)
+	avatar.rotation.z = lerpf(avatar.rotation.z,0.035*lateral_drive,blend)
 	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
 
 func _update_air_pose(delta: float) -> void:
