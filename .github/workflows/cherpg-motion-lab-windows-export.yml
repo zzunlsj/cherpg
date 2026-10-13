@@ -1,4 +1,4 @@
-name: CheRPG Windows EXE (0.0.7v)
+name: CheRPG Windows EXE (0.0.8v)
 
 on:
   pull_request:
@@ -19,10 +19,10 @@ jobs:
       - name: Checkout standalone Godot laboratory
         uses: actions/checkout@v4
 
-      - name: Install Godot 4.5.2 plus official export templates
+      - name: Install Godot 4.7.2 plus official export templates
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: "4.5.2"
+          version: "4.7.2"
           use-dotnet: false
           include-templates: true
 
@@ -40,9 +40,9 @@ jobs:
           PROJECT="$PWD/godot/tests/motion_rotation_lab"
           mkdir -p "$PROJECT/build"
           godot --headless --path "$PROJECT" --export-release \
-            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.7v.exe"
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.8v.exe"
 
-          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.7v.exe"
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.8v.exe"
           test -s "$EXE"
           python3 - "$EXE" <<'PY'
           from pathlib import Path
@@ -61,15 +61,15 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="godot/tests/motion_rotation_lab"
-          cp "$PROJECT/docs/WINDOWS_EXE_0.0.7v.md" \
-             "$PROJECT/build/README-WINDOWS-0.0.7v.md"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.8v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.8v.md"
 
       - name: Publish Windows test executable
         uses: actions/upload-artifact@v4
         with:
-          name: CheRPG-MotionLab-Windows-0.0.7v
+          name: CheRPG-MotionLab-Windows-0.0.8v
           path: |
-            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.7v.exe
-            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.7v.md
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.8v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.8v.md
           retention-days: 14
           if-no-files-found: error
