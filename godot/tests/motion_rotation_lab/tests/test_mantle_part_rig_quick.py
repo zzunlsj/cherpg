@@ -36,7 +36,7 @@ assert 'collision_mask = 1 | 4' in pawn
 assert 'query.collide_with_areas = true' in pawn
 assert 'capsule_shape.height = STANDING_HEIGHT_M' in pawn
 assert 'MAX_KNEE_FLEX_RAD' in pawn
-assert 'MANTLE: %s' in lab and 'PART COLLIDERS: %d' in lab
+assert 'MANTLE: %s' in lab and 'PARTS: %d' in lab and 'WALL INPUT:' in lab
 assert 'board_grid_visible = true' in terrain
 assert 'const TILE_M := 4.0' in terrain
 print('CHERPG_MANTLE_ARTICULATED_RIG_SOURCE_OK (NOT A PLAYTEST)')
