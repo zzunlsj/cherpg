@@ -8,7 +8,11 @@ var camera: Camera3D
 var info: Label
 var help_label: Label
 var camera_yaw := 0.0
-var camera_pitch := -0.19
+# Elevation measured upward from horizon: 0° horizontal, 90° straight down.
+# Mouse up increases elevation; a full 90° top-down view is explicitly allowed.
+var camera_elevation := deg_to_rad(24.0)
+const CAMERA_ELEVATION_MIN := -PI / 7.2
+const CAMERA_ELEVATION_MAX := PI / 2.0
 var camera_distance := 6.8
 var camera_target := Vector3.ZERO
 var grid_debug_visible := false
@@ -69,7 +73,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "WASD: camera-relative move | F: install / remove anchors | A/D while anchored: -/+90°\nR (hold): required-area hologram | O: reset | Shift: dash | Space: variable jump\n1-9,0: 10 test stations on ONE 100x100m flat base | F1: emphasize 2m board\nClick: attack pose | Z/C: body-only turn | Mouse: orbit | Esc: release mouse"
+	help_label.text = "WASD: camera-relative move | F: install / remove anchors | A/D while anchored: -/+90°\nR (hold): required-area hologram | O: reset | Shift: dash | Space: variable jump\n1-9,0: 10 test stations on ONE 100x100m flat base | F1: emphasize 2m board\nClick: attack pose | Z/C: body-only turn | Mouse: orbit (up to 90° top-down) | Esc: release mouse"
 	help_label.add_theme_font_size_override("font_size",14)
 	content.add_child(help_label)
 	_update_hud()
@@ -88,14 +92,20 @@ func _update_camera(delta: float) -> void:
 	var desired_target: Vector3 = pawn.global_position + Vector3.UP * 1.13
 	camera_target = camera_target.lerp(desired_target,clampf(delta*7.0,0.0,1.0))
 	var lateral := Vector3(sin(camera_yaw),0,cos(camera_yaw))
-	var desired := camera_target + lateral * camera_distance * cos(camera_pitch) + Vector3.UP * camera_distance * (0.24 - sin(camera_pitch))
+	var desired := camera_target + lateral * camera_distance * cos(camera_elevation) + Vector3.UP * camera_distance * sin(camera_elevation)
 	camera.global_position = camera.global_position.lerp(desired,clampf(delta*8.0,0.0,1.0))
-	camera.look_at(camera_target,Vector3.UP)
+	# At 90°, World UP is parallel to the downward view. Choose a stable
+	# horizontal camera-up vector to prevent look_at's singularity/roll flip.
+	var stable_up: Vector3 = -lateral if camera_elevation >= deg_to_rad(89.0) else Vector3.UP
+	camera.look_at(camera_target,stable_up)
+	# Steering follows camera orbit yaw, even when camera looks straight down.
+	# Screen-up never snaps to a default world axis at 90° elevation.
+	pawn.set_camera_orbit_yaw(camera_yaw)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		camera_yaw -= event.relative.x*.004
-		camera_pitch = clampf(camera_pitch+event.relative.y*.003,-.7,.5)
+		camera_elevation = clampf(camera_elevation-event.relative.y*.003,CAMERA_ELEVATION_MIN,CAMERA_ELEVATION_MAX)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		if pawn != null:
 			pawn.trigger_attack()
@@ -154,7 +164,7 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 2m GRID | 0.0.12v\n" \
+	info.text = "CheRPG | 100m x 100m / 2m GRID | 0.0.13v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
