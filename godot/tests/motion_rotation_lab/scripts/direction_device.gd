@@ -113,9 +113,9 @@ func _make_torus(title: String, major: float, minor: float, mat: Material) -> Me
 
 func _build_hologram() -> void:
 	# Required device clearance diameter: Ø(2*(.68+.075))=1.51m.
-	# Also draw the CURRENT 2x2m board tile independently.
+	# Also draw the CURRENT 4m x 4m board tile independently.
 	preview_root = Node3D.new()
-	preview_root.name = "R_HoldRequiredFootprintHologram"
+	preview_root.name = "F_HoldRequiredFootprintHologram"
 	add_child(preview_root)
 	ghost_color = StandardMaterial3D.new()
 	ghost_color.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -142,18 +142,18 @@ func _build_hologram() -> void:
 		shoe.material_override = ghost_color
 		shoe.position = Vector3(OPEN_RADIUS*cos(a),.025,-OPEN_RADIUS*sin(a))
 		preview_root.add_child(shoe)
-	# Full tile boundary is a true 2m x 2m SQUARE, aligned to board origin.
+	# Full tile boundary is a true 4m x 4m SQUARE, aligned to board origin.
 	tile_outline_root = Node3D.new()
-	tile_outline_root.name = "WorldAligned2mTileBorder"
+	tile_outline_root.name = "WorldAligned4mTileBorder"
 	preview_root.add_child(tile_outline_root)
 	for i in range(4):
 		var side := MeshInstance3D.new()
-		side.name = "TileEdge_%d" % i
+		side.name = "FourMetreTileEdge_%d" % i
 		var edge := BoxMesh.new()
-		edge.size = Vector3(2.0,0.018,0.024) if i < 2 else Vector3(0.024,0.018,2.0)
+		edge.size = Vector3(4.0,0.018,0.024) if i < 2 else Vector3(0.024,0.018,4.0)
 		side.mesh = edge
 		side.material_override = ghost_color
-		side.position = Vector3(0.0,.01,(-1.0 if i == 0 else 1.0)) if i < 2 else Vector3((-1.0 if i == 2 else 1.0),.01,0.0)
+		side.position = Vector3(0.0,.01,(-2.0 if i == 0 else 2.0)) if i < 2 else Vector3((-2.0 if i == 2 else 2.0),.01,0.0)
 		tile_outline_root.add_child(side)
 	preview_root.visible = false
 
@@ -315,9 +315,9 @@ func _probe_all_feet() -> Dictionary:
 		var length: float = COLLAR_Y-(center_y-pawn.global_position.y+FOOT_THICKNESS*.5)
 		if length < MIN_STROKE or length > MAX_STROKE:
 			return {"ok":false,"reason":"ANCHOR %d: STROKE %.2fm OUT OF RANGE" % [i+1,length],"contacts":[]}
-		# The 1.36-m deployed ring plus foot diameter stays inside a 2x2-m tile.
-		if maxf(absf(dx),absf(dz))+FOOT_RADIUS >= 1.0:
-			return {"ok":false,"reason":"RING EXCEEDS 2-M TILE","contacts":[]}
+		# The 1.36-m deployed ring plus foot diameter stays inside a 4x4-m tile.
+		if maxf(absf(dx),absf(dz))+FOOT_RADIUS >= BOARD_RULES.HALF_TILE_M:
+			return {"ok":false,"reason":"RING EXCEEDS BOARD TILE","contacts":[]}
 		contacts.append({"x":dx,"z":dz,"center_y":center_y-pawn.global_position.y,
 			"normal":normal,"stroke":length,"correction":highest_correction})
 	return {"ok":true,"reason":"ALL FOUR FEET SUPPORTED","contacts":contacts}
