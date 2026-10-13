@@ -29,7 +29,7 @@ assert "_wall_contact(-climb_normal)" in attachment
 assert "_camera_flat_forward()" in attachment  # for initial Ctrl+W attachment only
 assert "elif active_direction > 0.25:" in attachment
 assert "if climbing:" in attachment
-assert "Ctrl+W" in hud
+assert "Ctrl + W" in hud
 assert "fixed wall axes" in hud
 # Wall +Z: right vector UP x normal = +X, up vector = +Y.
 def dot(a,b):
