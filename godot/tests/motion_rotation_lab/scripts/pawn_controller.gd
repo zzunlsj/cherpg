@@ -40,6 +40,9 @@ var move_state := "IDLE"
 var floor_deg := 0.0
 var slope_sign := 0.0
 var gait_clock := 0.0
+var run_blend := 0.0
+var attack_timer := 0.0
+const ATTACK_POSE_SECONDS := 0.36
 var smoothed_input := 0.0
 var smoothed_strafe := 0.0
 var board_origin: Vector3 = Vector3.ZERO
@@ -199,6 +202,13 @@ func queue_jump() -> void:
 func release_jump() -> void:
 	jump_key_down = false
 
+func trigger_attack() -> void:
+	# Unity source: ResetTrigger("attack"), then SetTrigger("attack").
+	# Placeholder arm motion; no combat hitbox or damage is invented.
+	if device != null and bool(device.call("is_busy")):
+		return
+	attack_timer = ATTACK_POSE_SECONDS
+
 func set_movement_camera(source: Camera3D) -> void:
 	movement_camera = source
 
@@ -354,6 +364,7 @@ func _physics_process(delta: float) -> void:
 		_update_gait(delta,horizontal_speed,wants_run,input_vector.length())
 	else:
 		_update_air_pose(delta)
+	_apply_attack_pose(delta)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
 
@@ -376,40 +387,70 @@ func apply_forced_displacement(delta_world: Vector3) -> void:
 	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 
 func _update_air_pose(delta: float) -> void:
-	# Separate primitive-joint animation: tucked ascent, extended descent.
+	# Air poses are separate from horizontal movement / Unity Rigidbody2D code.
 	var rising: bool = velocity.y >= 0.0
+	var ascent: float = clampf(velocity.y / JUMP_VELOCITY, 0.0, 1.0)
+	var descent: float = clampf(-velocity.y / 8.0, 0.0, 1.0)
+	var smooth: float = minf(1.0, delta * 10.0)
 	for i in range(2):
-		var target_hip: float = (0.36 if i == 0 else -0.21) if rising else (-0.13 if i == 0 else 0.09)
-		var target_knee: float = (0.37 if rising else 0.16)
-		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,target_hip,minf(1.0,delta*10.5))
-		knee[i].rotation.x = lerpf(knee[i].rotation.x,target_knee,minf(1.0,delta*11.0))
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,(-0.26 if rising else 0.12),minf(1.0,delta*10.0))
-		feet[i].rotation.x = lerpf(feet[i].rotation.x,(-0.20 if rising else 0.10),minf(1.0,delta*10.0))
-	avatar.rotation.x = lerpf(avatar.rotation.x,(-0.045 if rising else 0.025),minf(1.0,delta*6.0))
-	avatar.position.y = lerpf(avatar.position.y,0.0,minf(1.0,delta*9.0))
+		var lead: float = 1.0 if i == 0 else -1.0
+		var hip_target: float = (0.18 + 0.20 * ascent) * lead if rising else -0.09 + descent * 0.15 * lead
+		var knee_target: float = (0.42 - 0.08 * ascent) if rising else 0.14 + 0.18 * descent
+		var arm_target: float = (-0.48 + 0.15 * ascent) if rising else 0.13 + 0.12 * descent
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, hip_target, smooth)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_target, smooth)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, arm_target, smooth)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x, -0.22 if rising else 0.12, smooth)
+		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z, lead * 0.10, smooth)
+	avatar.rotation.x = lerpf(avatar.rotation.x, -0.05 if rising else 0.045, minf(1.0, delta * 6.5))
+	avatar.position.y = lerpf(avatar.position.y, 0.02 * takeoff_visual, minf(1.0, delta * 9.0))
 
 func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: float) -> void:
-	var moving := minf(horizontal_speed / WALK_MPS, 1.4)
-	if absf(axis) > 0.1 and is_on_floor():
-		gait_clock += horizontal_speed * delta * (2.4 if running else 2.1)
-	var fade := clampf(moving, 0.0, 1.0) if absf(axis) > 0.01 else 0.0
-	var amplitude := (0.57 if running else 0.35) * fade
-	var swing := sin(gait_clock)
-	var slope_ratio := clampf(floor_deg / 25.0, 0.0, 1.0)
+	# Ground locomotion: continuous walk/run blend instead of a frame-cut.
+	# Pace follows real planar travel. Arm swing is opposite to each thigh.
+	var locomotion: float = clampf(horizontal_speed / WALK_MPS, 0.0, 1.0)
+	var target_run: float = 1.0 if running and horizontal_speed > 2.0 else 0.0
+	run_blend = move_toward(run_blend, target_run, delta * 4.8)
+	var activity: float = locomotion * clampf(axis * 2.1, 0.0, 1.0)
+	if activity > 0.02:
+		gait_clock += horizontal_speed * delta * lerpf(2.1, 2.68, run_blend)
+	var stride: float = lerpf(0.36, 0.60, run_blend) * activity
+	var lift: float = lerpf(0.22, 0.45, run_blend) * activity
+	var slope_scale: float = clampf(floor_deg / 25.0, 0.0, 1.0)
+	var uphill: float = maxf(0.0, slope_sign) * slope_scale
+	var downhill: float = maxf(0.0, -slope_sign) * slope_scale
+	var smooth: float = minf(1.0, delta * 12.0)
 	for i in range(2):
-		var phase_swing := swing if i == 0 else -swing
-		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, phase_swing * amplitude, minf(1.0,delta * 13.0))
-		var knee_lift := maxf(0.0, -phase_swing) * (0.38 if running else 0.20)
-		knee_lift += maxf(0.0, slope_sign) * slope_ratio * 0.23
-		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_lift * fade, minf(1.0,delta * 11.0))
-		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, -phase_swing * amplitude * .75, minf(1.0,delta * 10.0))
-		feet[i].rotation.x = lerpf(feet[i].rotation.x, -knee[i].rotation.x * .3, minf(1.0,delta * 10.0))
-	var climb_lean := clampf(slope_sign * 0.24, -0.09, 0.11)
-	avatar.rotation.x = lerpf(avatar.rotation.x, climb_lean, minf(1.0,delta * 7.0))
-	var bounce := absf(sin(gait_clock * 2.0)) * (0.016 if running else 0.008) * fade
-	# Landing compression and takeoff stretch affect posture, never the collision body.
-	var squat: float = -0.055*landing_visual + 0.025*takeoff_visual
-	avatar.position.y = lerpf(avatar.position.y,bounce+squat,minf(1.0,delta*12.0))
+		var phase: float = gait_clock + (0.0 if i == 0 else PI)
+		var leg_cycle: float = sin(phase)
+		# Bent knee clears the ground during forward recovery and steep climbs.
+		var recovering: float = maxf(0.0, leg_cycle)
+		var thigh_goal: float = leg_cycle * stride + uphill * 0.08
+		var knee_goal: float = (recovering * lift + uphill * 0.24 + downhill * 0.08) * activity
+		var foot_goal: float = -knee_goal * 0.38 - leg_cycle * 0.10 * activity
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, thigh_goal, smooth)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_goal, smooth)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x, foot_goal, smooth)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x, -leg_cycle * stride * 0.77, smooth)
+		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z, (1.0 if i == 0 else -1.0) * run_blend * 0.055 * activity, smooth)
+	var forward_lean: float = -0.075 * run_blend * activity - uphill * 0.10 + downhill * 0.035
+	avatar.rotation.x = lerpf(avatar.rotation.x, forward_lean, minf(1.0, delta * 7.0))
+	# Two support beats per stride. Landing compression remains visual only.
+	var support_beat: float = 0.5 - 0.5 * cos(gait_clock * 2.0)
+	var bounce: float = support_beat * lerpf(0.011, 0.029, run_blend) * activity
+	var compression: float = -0.07 * landing_visual + 0.035 * takeoff_visual
+	avatar.position.y = lerpf(avatar.position.y, bounce + compression, minf(1.0, delta * 12.0))
+
+func _apply_attack_pose(delta: float) -> void:
+	# Left-click input from pawn_player.cs: right arm swings once, retriggerable.
+	attack_timer = maxf(0.0, attack_timer - delta)
+	if shoulder.size() < 2:
+		return
+	if attack_timer > 0.0:
+		var elapsed: float = 1.0 - attack_timer / ATTACK_POSE_SECONDS
+		var strike: float = pow(maxf(0.0, sin(elapsed * PI)), 1.3)
+		shoulder[1].rotation.x = lerpf(shoulder[1].rotation.x, -1.35 * strike, minf(1.0, delta * 24.0))
+		shoulder[1].rotation.z = lerpf(shoulder[1].rotation.z, -0.18 * strike, minf(1.0, delta * 18.0))
 
 func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void:
 	global_position = Vector3(world_x, base_y + SPAWN_CLEARANCE_M, world_z)
@@ -422,6 +463,8 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	resistance_attempts = 0
 	smoothed_strafe = 0.0
 	gait_clock = 0.0
+	run_blend = 0.0
+	attack_timer = 0.0
 	smoothed_input = 0.0
 	latest_axis = 0.0
 	latest_sprint = false
