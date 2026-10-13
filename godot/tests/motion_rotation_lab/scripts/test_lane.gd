@@ -60,9 +60,11 @@ func _build_terrain() -> void:
 	add_child(collision)
 	# 2-metre reference tiles, visualization only (no extra collision).
 	for x_value in [-2.0, 0.0, 2.0]:
-		for z_value in range(-12, 13, 2):
+		for z_step in range(-11, 3):
+			var z_value: float = 9.3 + float(z_step) * 2.0
 			var marker := MeshInstance3D.new()
-			marker.name = "TileMark"
+			marker.name = "TileMarkDebug"
+			marker.visible = false
 			var box := BoxMesh.new()
 			box.size = Vector3(0.055, 0.01, 0.26)
 			marker.mesh = box
@@ -71,6 +73,11 @@ func _build_terrain() -> void:
 			mm.albedo_color = Color(0.88, 0.9, 0.83, 0.8)
 			marker.material_override = mm
 			add_child(marker)
+
+func set_board_debug_visible(enabled: bool) -> void:
+	for child in get_children():
+		if child is MeshInstance3D and child.name.begins_with("TileMarkDebug"):
+			child.visible = enabled
 
 func _build_labels() -> void:
 	var label := Label3D.new()
