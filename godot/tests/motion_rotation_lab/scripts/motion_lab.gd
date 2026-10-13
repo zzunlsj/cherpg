@@ -116,6 +116,8 @@ func _camera_collision_clamp(pivot: Vector3, wanted: Vector3) -> Vector3:
 	if safe.size() < 1:
 		return wanted
 	var safe_fraction: float = clampf(safe[0],0.0,1.0)
+	if safe_fraction >= 0.999:
+		return wanted # preserve EXACT configured orbit distance when clear
 	var movement_length: float = motion.length()
 	var allowed_distance: float = maxf(0.0,movement_length * safe_fraction - CAMERA_SURFACE_MARGIN)
 	return pivot + motion.normalized() * allowed_distance
