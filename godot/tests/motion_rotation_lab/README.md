@@ -1,3 +1,11 @@
+# ⚠ CheRPG Godot 설정집 반영: 0.0.7v
+
+이번 버전은 [세계관 정사 적용 사항](docs/CANON_ALIGNMENT_0.0.7v.md)과 함께 확인하세요. 한 칸 안에서는 `W/A/S/D` 자유 이동, 다른 칸으로 넘어갈 때에만 폰의 전진 행마 제한을 적용합니다. `Z/C`는 **몸만 돌리는** 키이고, `F1`은 평소 보이지 않는 판면 좌표의 디버그 표식을 켭니다. 0.0.6v 때 적힌 'W/S만 이동'은 예전 버전 설명입니다.
+
+**Godot 플레이·장시간 테스트는 사용자 진행입니다.** 이 변경에 대한 Godot 런타임 검증은 실행하지 않았습니다.
+
+---
+
 # CheRPG — Terrain Motion + Direction Device Test Map (0.0.6v)
 
 **Standalone Godot 4.5.2 project** — independent from the main game map, village and checkpoint. This branch changes no production scenes.
