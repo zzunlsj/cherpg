@@ -24,6 +24,8 @@ const GROUND_RELEASE_BRAKE := 56.0 # replicates strong -velocity.normalized*maxF
 const AIR_PUSH_ACCEL := 7.0
 const AIR_BRAKE := 3.5
 const GRAVITY := 18.0
+# Pawn root at ground level; spawn starts above the sampled surface.
+const SPAWN_CLEARANCE_M := 0.20
 const COYOTE_SECONDS := 0.115    # jump just after losing the edge
 const JUMP_BUFFER_SECONDS := 0.135 # retain jump pressed before touching ground
 const JUMP_VELOCITY := 6.25      # calculated vertical impulse (separate from 2D locomotion)
@@ -56,6 +58,7 @@ var takeoff_visual := 0.0
 var jump_state := "GROUNDED"
 var ground_normal := Vector3.UP
 var device: Node3D
+var movement_camera: Camera3D
 var avatar: Node3D
 var upper_leg: Array[Node3D] = []
 var knee: Array[Node3D] = []
@@ -79,7 +82,7 @@ func _ready() -> void:
 	var collider := CollisionShape3D.new()
 	collider.name = "PawnCollisionCapsule"
 	collider.shape = capsule
-	collider.position.y = 0.765
+	collider.position.y = capsule.height * 0.5 # capsule bottom aligns with character root
 	add_child(collider)
 	stone = _mat(Color("b5b4ab"), 0.0)
 	ivory = _mat(Color("e2dac7"), 0.0)
@@ -168,7 +171,7 @@ func _build_primitive_body() -> void:
 		joint.add_child(foot)
 		foot.position = Vector3(0, -0.325, 0)
 		feet.append(foot)
-		_box(foot, "BODY_" + side + "_Foot", Vector3(0, -0.006, -0.05), Vector3(0.19, 0.12, 0.25), dark)
+		_box(foot, "BODY_" + side + "_Foot", Vector3(0, -0.038, -0.05), Vector3(0.19, 0.12, 0.25), dark)
 		var arm := Node3D.new()
 		arm.name = "RIG_" + side + "_ShoulderPivot"
 		avatar.add_child(arm)
@@ -196,6 +199,19 @@ func queue_jump() -> void:
 func release_jump() -> void:
 	jump_key_down = false
 
+func set_movement_camera(source: Camera3D) -> void:
+	movement_camera = source
+
+func _camera_flat_forward() -> Vector3:
+	# Forward input always uses camera view projected onto the XZ plane.
+	# Never use chess-rule heading or camera pitch to steer the input.
+	if is_instance_valid(movement_camera):
+		var horizontal: Vector3 = -movement_camera.global_transform.basis.z
+		horizontal.y = 0.0
+		if horizontal.length_squared() > 0.0001:
+			return horizontal.normalized()
+	return Vector3.FORWARD
+
 func _horizontal_velocity() -> Vector3:
 	return Vector3(velocity.x, 0.0, velocity.z)
 
@@ -203,7 +219,7 @@ func _horizontal_velocity() -> Vector3:
 ## Godot move_and_slide() will handle final collider response after this update.
 func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bool, delta: float, floor: bool, slope_multiplier: float) -> Vector3:
 	var speed_cap: float = (RUN_MPS if sprint else WALK_MPS) * slope_multiplier
-	var forward: Vector3 = HEADINGS[heading_index]
+	var forward: Vector3 = _camera_flat_forward()
 	var right: Vector3 = forward.cross(Vector3.UP)
 	var intended: Vector3 = (right * input_vector.x + forward * input_vector.y).limit_length(1.0)
 	var magnitude: float = minf(1.0, input_vector.length())
@@ -252,7 +268,7 @@ func _physics_process(delta: float) -> void:
 	var wants_run: bool = Input.is_key_pressed(KEY_SHIFT) and (not is_zero_approx(raw_axis) or not is_zero_approx(raw_strafe))
 	latest_axis = input_vector.y
 	latest_sprint = wants_run
-	var forward: Vector3 = HEADINGS[heading_index]
+	var forward: Vector3 = _camera_flat_forward()
 	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
 
 	if was_on_floor:
@@ -396,7 +412,7 @@ func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: fl
 	avatar.position.y = lerpf(avatar.position.y,bounce+squat,minf(1.0,delta*12.0))
 
 func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void:
-	global_position = Vector3(world_x, base_y + 0.12, world_z)
+	global_position = Vector3(world_x, base_y + SPAWN_CLEARANCE_M, world_z)
 	velocity = Vector3.ZERO
 	lane_index = index
 	heading_index = 0
