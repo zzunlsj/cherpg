@@ -12,6 +12,7 @@ const MAX_STROKE := 0.54
 const TWEEN_SECONDS := 1.8
 const TURN_SECONDS := 0.62
 const ANCHOR_ANGLES := [45.0, 135.0, 225.0, 315.0]
+const BOARD_RULES = preload("res://scripts/board_rules.gd")
 enum Phase {STOWED, DEPLOYING, GROUNDED, TURNING, RETRACTING}
 var phase: Phase = Phase.STOWED
 var phase_time := 0.0
@@ -20,6 +21,7 @@ var heading_start := 0.0
 var heading_goal := 0.0
 var turn_target_index := 0
 var reason := "READY"
+var locked_cell: Vector2i = Vector2i.ZERO
 var pawn
 var components: Array[Dictionary] = []
 var contact_cache: Array[Dictionary] = []
@@ -130,6 +132,7 @@ func request_deploy() -> void:
 		reason = str(result["reason"])
 		return
 	contact_cache = result["contacts"]
+	locked_cell = BOARD_RULES.cell_at(pawn.global_position, pawn.board_origin)
 	phase_time = 0.0
 	phase = Phase.DEPLOYING
 	reason = "SUPPORT LOCKED"
@@ -139,6 +142,9 @@ func request_turn() -> void:
 		reason = "GROUNDED BODY REQUIRED"
 		return
 	if phase != Phase.GROUNDED:
+		return
+	if locked_cell != BOARD_RULES.cell_at(pawn.global_position, pawn.board_origin):
+		reason = "BOARD ANCHOR DISCONNECTED: TILE CHANGED"
 		return
 	# Recheck during active use: if the ground has become unsafe, don't turn.
 	var result := _probe_all_feet()
@@ -188,6 +194,13 @@ func _physics_process(delta: float) -> void:
 func _probe_all_feet() -> Dictionary:
 	if pawn == null:
 		return {"ok":false,"reason":"NO PAWN","contacts":[]}
+	var tile: Vector2i = BOARD_RULES.cell_at(pawn.global_position, pawn.board_origin)
+	var center: Vector3 = BOARD_RULES.cell_center(tile, pawn.board_origin)
+	var offset_x: float = absf(pawn.global_position.x - center.x)
+	var offset_z: float = absf(pawn.global_position.z - center.z)
+	# Extended ring + four feet must stay inside this tile.
+	if maxf(offset_x, offset_z) + OPEN_RADIUS + FOOT_RADIUS >= BOARD_RULES.HALF_TILE_M:
+		return {"ok":false,"reason":"ALIGN TO TILE CENTER BEFORE DEPLOYING","contacts":[]}
 	var space := get_world_3d().direct_space_state
 	var contacts: Array[Dictionary] = []
 	for i in range(4):
