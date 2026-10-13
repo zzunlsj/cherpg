@@ -2,7 +2,7 @@
 config_version=5
 
 [application]
-config/name="CheRPG | Terrain Motion + Rotation Lab 0.0.5v"
+config/name="CheRPG | Canon Rules Motion Lab 0.0.7v"
 run/main_scene="res://scenes/MotionLab.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 
