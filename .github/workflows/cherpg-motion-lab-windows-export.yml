@@ -33,6 +33,16 @@ jobs:
           timeout 55s godot --headless --editor --import \
             --path godot/tests/motion_rotation_lab --quit
 
+      - name: Short Godot startup/parser sanity check (not a gameplay test)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
+            --quit-after 3 2>&1 | tee "$RUNNER_TEMP/boot.log"
+          if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Failed to load script|ERROR: Shader' "$RUNNER_TEMP/boot.log"; then
+            exit 1
+          fi
+
       - name: Export one self-contained Windows x86_64 EXE
         shell: bash
         run: |
