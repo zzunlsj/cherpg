@@ -73,6 +73,8 @@ var climb_normal := Vector3.ZERO
 var ground_normal := Vector3.UP
 var device: Node3D
 var movement_camera: Camera3D
+# Stable camera yaw-forward vector used at every pitch, including true 90°.
+var camera_orbit_forward := Vector3.FORWARD
 var avatar: Node3D
 var upper_leg: Array[Node3D] = []
 var knee: Array[Node3D] = []
@@ -278,15 +280,15 @@ func trigger_attack() -> void:
 func set_movement_camera(source: Camera3D) -> void:
 	movement_camera = source
 
+func set_camera_orbit_yaw(yaw: float) -> void:
+	# Follow the orbit's azimuth rather than project camera look into XZ:
+	# at 90° top-down the projection becomes zero, and camera motion lags.
+	camera_orbit_forward = Vector3(-sin(yaw),0.0,-cos(yaw))
+
 func _camera_flat_forward() -> Vector3:
-	# Forward input always uses camera view projected onto the XZ plane.
-	# Never use chess-rule heading or camera pitch to steer the input.
-	if is_instance_valid(movement_camera):
-		var horizontal: Vector3 = -movement_camera.global_transform.basis.z
-		horizontal.y = 0.0
-		if horizontal.length_squared() > 0.0001:
-			return horizontal.normalized()
-	return Vector3.FORWARD
+	# W is screen-up on the horizontal board at all camera elevations.
+	# Camera pitch and Pawn chess-heading are independent of the move axis.
+	return camera_orbit_forward
 
 func _horizontal_velocity() -> Vector3:
 	return Vector3(velocity.x, 0.0, velocity.z)
