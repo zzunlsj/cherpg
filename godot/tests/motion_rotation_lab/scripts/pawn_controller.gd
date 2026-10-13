@@ -38,7 +38,7 @@ const WALL_CLIMB_MPS := 2.5
 const CLIMB_MIN_ANGLE_DEG := 30.0
 const GRAB_REACH_M := 0.95
 const CROUCH_MPS := 1.8
-const STANDING_HEIGHT_M := 1.43
+const STANDING_HEIGHT_M := 1.60 # includes helmet orb and collision margin
 const CROUCH_HEIGHT_M := 1.02
 const CROUCH_TRANSITION_RATE := 7.5
 const MAX_KNEE_FLEX_RAD := 1.65
@@ -95,6 +95,7 @@ var avatar: Node3D
 var upper_leg: Array[Node3D] = []
 var knee: Array[Node3D] = []
 var shoulder: Array[Node3D] = []
+var elbow: Array[Node3D] = []
 var feet: Array[Node3D] = []
 var stone: StandardMaterial3D
 var ivory: StandardMaterial3D
@@ -211,9 +212,14 @@ func _build_primitive_body() -> void:
 		shoulder.append(arm)
 		_ball(arm, "BODY_" + side + "_Shoulder", Vector3.ZERO, Vector3(.105,.095,.11), dark)
 		_rod(arm, "BODY_" + side + "_UpperArm", Vector3(sign*.02,-.04,0), Vector3(sign*.065,-.22,0), .067, stone)
-		_ball(arm, "BODY_" + side + "_Elbow", Vector3(sign*.066,-.245,0), Vector3(.058,.064,.064), iron)
-		_rod(arm, "BODY_" + side + "_Forearm", Vector3(sign*.066,-.255,0), Vector3(sign*.105,-.47,0), .063, stone)
-		_box(arm, "BODY_" + side + "_MalletHand", Vector3(sign*.108,-.52,0), Vector3(.108,.14,.103), dark)
+		var elbow_pivot := Node3D.new()
+		elbow_pivot.name = "RIG_" + side + "_ElbowPivot"
+		arm.add_child(elbow_pivot)
+		elbow_pivot.position = Vector3(sign*.066,-.245,0)
+		elbow.append(elbow_pivot)
+		_ball(elbow_pivot, "BODY_" + side + "_Elbow", Vector3.ZERO, Vector3(.058,.064,.064), iron)
+		_rod(elbow_pivot, "BODY_" + side + "_Forearm", Vector3(0,-.01,0), Vector3(sign*.039,-.225,0), .063, stone)
+		_box(elbow_pivot, "BODY_" + side + "_MalletHand", Vector3(sign*.042,-.275,0), Vector3(.108,.14,.103), dark)
 	_ball(avatar,"HEAD_Face_Blank",Vector3(0,1.212,0),Vector3(.146,.14,.134),ivory)
 	_ball(avatar,"HEAD_HairCap_Basic",Vector3(0,1.334,0),Vector3(.158,.05,.143),stone)
 	# No eyes, nose, mouth or detailed sculpting at this blockout stage.
@@ -813,7 +819,7 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	landing_visual = 0.0
 	takeoff_visual = 0.0
 	jump_state = "GROUNDED"
-	for group in upper_leg + knee + shoulder + feet:
+	for group in upper_leg + knee + shoulder + elbow + feet:
 		group.rotation = Vector3.ZERO
 	avatar.position = Vector3.ZERO
 	avatar.rotation = Vector3.ZERO
