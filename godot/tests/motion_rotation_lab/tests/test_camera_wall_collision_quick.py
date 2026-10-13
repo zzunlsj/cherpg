@@ -15,6 +15,8 @@ required=(
     "query.collide_with_bodies = true",
     "get_world_3d().direct_space_state.cast_motion(query)",
     "maxf(0.0,movement_length * safe_fraction - CAMERA_SURFACE_MARGIN)",
+    "if safe_fraction >= 0.999:",
+    "return wanted # preserve EXACT configured orbit distance when clear",
     "_camera_collision_clamp(sweep_pivot,desired)",
     "_camera_collision_clamp(sweep_pivot,interpolated)",
     "CAMERA_FOLLOW_SPEED if camera_wall_blocked else CAMERA_RECOVER_SPEED",
@@ -27,8 +29,8 @@ required=(
 for token in required:
     assert token in lab, token
 assert lab.count("camera.global_position = _camera_collision_clamp") == 1
-# The camera may shorten only upon collision. With no collider, the sweep's
-# returned safety ratio is 1.0, and surface margin is a small safety inset.
+# Without a collision the return path preserves the full desired distance;
+# the safety gap is subtracted only from genuinely obstructed sweeps.
 for distance in (1.0,6.8,12.0):
     from math import isclose
     allowed=max(0.,distance-0.08)
