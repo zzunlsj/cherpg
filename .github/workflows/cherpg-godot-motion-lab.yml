@@ -1,8 +1,6 @@
-name: CheRPG Godot Motion Lab 0.0.6v
+name: CheRPG Godot Motion Lab (manual tests)
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -38,10 +36,10 @@ jobs:
           assert 'ANCHOR_ANGLES := [45.0, 135.0, 225.0, 315.0]' in device
           print('CHERPG_GODOT_SOURCE_STRUCTURE_OK')
           PY
-      - name: Install Godot 4.5.2
+      - name: Install Godot 4.7.2
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: '4.5.2'
+          version: '4.7.2'
           use-dotnet: false
           include-templates: false
       - name: Verify Godot parser and scene import
