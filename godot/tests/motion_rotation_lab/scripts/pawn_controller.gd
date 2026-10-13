@@ -33,8 +33,10 @@ const JUMP_RELEASE_GRAVITY_MULT := 2.35 # early release => shorter hop
 const FALL_GRAVITY_MULT := 1.20
 const MAX_UPWARD_SPEED := 7.0
 const MAX_ASCENT_ANGLE_DEG := 90.0
-const NORMAL_FLOOR_CUTOFF_DEG := 89.9  # wall at 90 uses contact climbing
+const NORMAL_FLOOR_CUTOFF_DEG := 29.5  # >=30° requires grabbable contact-climbing
 const WALL_CLIMB_MPS := 2.5
+const CLIMB_MIN_ANGLE_DEG := 30.0
+const GRAB_REACH_M := 0.95
 const DASH_SPEED_MPS := 10.5
 const DASH_SECONDS := 0.20
 const DASH_COOLDOWN_SECONDS := 0.85
@@ -230,24 +232,37 @@ func queue_dash() -> void:
 	dash_timer = DASH_SECONDS
 	dash_cooldown = DASH_COOLDOWN_SECONDS
 
-func _wall_contact(camera_forward: Vector3) -> Dictionary:
-	# A true 90° wall does not count as a floor in CharacterBody3D.
-	# Near vertical surfaces receive a separate W-to-climb adhesion velocity.
-	var cast_from: Vector3 = global_position + Vector3.UP * 0.55
-	var cast_to: Vector3 = cast_from + camera_forward * 0.87
+func _wall_contact(move_forward: Vector3) -> Dictionary:
+	# Contact alone is not enough: collider must explicitly be grabbable.
+	# 30° is measured from horizontal (normal relative to Vector3.UP).
+	# The separate test ramps and the vertical wall carry this group tag.
+	if move_forward.length_squared() < 0.25:
+		return {}
+	var cast_from: Vector3 = global_position + Vector3.UP * 0.56
+	var cast_to: Vector3 = cast_from + move_forward.normalized() * GRAB_REACH_M
 	var ray := PhysicsRayQueryParameters3D.create(cast_from,cast_to,1,[get_rid()])
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
 	if hit.is_empty():
 		return {}
-	var n: Vector3 = hit["normal"]
-	if absf(n.y) > 0.12 or -camera_forward.dot(n) < .72:
+	var hit_body: Object = hit["collider"]
+	if not is_instance_valid(hit_body) or not hit_body is CollisionObject3D:
 		return {}
+	if not hit_body.is_in_group("cherpg_grabbable"):
+		return {}
+	var normal: Vector3 = hit["normal"].normalized()
+	var face_angle: float = rad_to_deg(acos(clampf(normal.dot(Vector3.UP),-1.0,1.0)))
+	if face_angle < CLIMB_MIN_ANGLE_DEG - 0.1 or face_angle > 90.1:
+		return {}
+	# Character must be facing and pressing toward the wall.
+	if -move_forward.normalized().dot(normal) < 0.40:
+		return {}
+	hit["slope_angle"] = face_angle
 	return hit
 
 func _try_climb_top_ledge(forward: Vector3) -> void:
 	# The 90° test wall has a solid landing deck at y=3m. Transfer onto it
 	# once the feet are near the top. Still obey voluntary board step limits.
-	if not climbing:
+	if not climbing or climb_normal.y > 0.12:
 		return
 	var ray_start: Vector3 = global_position + Vector3.UP*1.7 + forward*1.0
 	var ray_end: Vector3 = ray_start + Vector3.DOWN*2.8
@@ -351,7 +366,8 @@ func _physics_process(delta: float) -> void:
 	var forward: Vector3 = _camera_flat_forward()
 	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
 	var contact: Dictionary = _wall_contact(forward) if raw_axis > 0.35 and not device_busy else {}
-	climbing = not contact.is_empty() and (was_on_floor or climbing)
+	# Airborne grabbing is allowed on a confirmed grabbable contact.
+	climbing = not contact.is_empty() and dash_timer <= 0.0
 	if climbing:
 		climb_normal = contact["normal"]
 		dash_timer = 0.0
@@ -371,7 +387,7 @@ func _physics_process(delta: float) -> void:
 
 	jump_buffer_left = maxf(0.0, jump_buffer_left-delta)
 	# Device and jump are mutually exclusive; jump is not a direction-change skill.
-	if jump_buffer_left > 0.0 and coyote_left > 0.0 and not device_busy:
+	if jump_buffer_left > 0.0 and coyote_left > 0.0 and not device_busy and not climbing:
 		velocity.y = JUMP_VELOCITY
 		jump_buffer_left = 0.0
 		coyote_left = 0.0
@@ -381,7 +397,9 @@ func _physics_process(delta: float) -> void:
 		was_on_floor = false
 
 	if climbing:
-		velocity.y = WALL_CLIMB_MPS
+		# Surface-tangent ascent works from 30° inclines to 90° walls.
+		var ascent: Vector3 = (Vector3.UP - climb_normal * climb_normal.y).normalized()
+		velocity.y = ascent.y * WALL_CLIMB_MPS - climb_normal.y * 0.18
 		jump_state = "CLIMBING"
 	elif not was_on_floor:
 		var grav_mult: float = FALL_GRAVITY_MULT if velocity.y < 0.0 else (JUMP_RELEASE_GRAVITY_MULT if not jump_key_down else 1.0)
@@ -399,7 +417,8 @@ func _physics_process(delta: float) -> void:
 	if dash_timer > 0.0 and not device_busy:
 		next_horizontal = dash_direction * DASH_SPEED_MPS
 	if climbing:
-		next_horizontal = -climb_normal * 0.18
+		var tangent_up: Vector3 = (Vector3.UP - climb_normal * climb_normal.y).normalized()
+		next_horizontal = Vector3(tangent_up.x,0.0,tangent_up.z) * WALL_CLIMB_MPS 			- Vector3(climb_normal.x,0.0,climb_normal.z) * 0.18
 	if device_busy:
 		next_horizontal = Vector3.ZERO
 	var starting_position: Vector3 = global_position
@@ -485,7 +504,7 @@ func _update_climb_pose(delta: float) -> void:
 		knee[i].rotation.x = lerpf(knee[i].rotation.x,.78 + .17*cos(phase),blend)
 		feet[i].rotation.x = lerpf(feet[i].rotation.x,-.20,blend)
 		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-1.05 + .25*sin(phase+PI),blend)
-	avatar.rotation.x = lerpf(avatar.rotation.x,-.11,blend)
+	avatar.rotation.x = lerpf(avatar.rotation.x,-.12 - .22 * (1.0-climb_normal.y),blend)
 	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
 
 func _update_air_pose(delta: float) -> void:
@@ -559,7 +578,7 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	velocity = Vector3.ZERO
 	lane_index = index
 	heading_index = 0
-	board_origin = Vector3.ZERO # continuous world-aligned 2m x 2m tiles
+	board_origin = Vector3.ZERO # continuous world-aligned 4m x 4m tiles
 	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 	resistance_time = 0.0
 	resistance_attempts = 0
