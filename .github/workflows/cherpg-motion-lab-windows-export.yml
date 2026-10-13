@@ -32,6 +32,9 @@ jobs:
       - name: Verify camera 90-degree behavior in source (no playtest)
         run: python3 godot/tests/motion_rotation_lab/tests/test_camera_90deg_quick.py
 
+      - name: Verify mantle stages and all-part collision envelopes (static only)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_mantle_part_rig_quick.py
+
       - name: Import resources (build preparation only — no play testing)
         shell: bash
         run: |
