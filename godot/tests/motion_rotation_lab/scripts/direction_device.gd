@@ -28,6 +28,7 @@ var contact_cache: Array[Dictionary] = []
 var opening_ring: MeshInstance3D
 var heading_pivot: Node3D
 var preview_root: Node3D
+var tile_outline_root: Node3D
 var ghost_color: StandardMaterial3D
 var preview_reason := "NO PREVIEW"
 var dark: StandardMaterial3D
@@ -141,16 +142,19 @@ func _build_hologram() -> void:
 		shoe.material_override = ghost_color
 		shoe.position = Vector3(OPEN_RADIUS*cos(a),.025,-OPEN_RADIUS*sin(a))
 		preview_root.add_child(shoe)
-	var tile_outline := MeshInstance3D.new()
-	tile_outline.name = "BoardTile2x2m_Hologram"
-	var boundary := TorusMesh.new()
-	boundary.inner_radius = 1.01
-	boundary.outer_radius = 1.025
-	# The circle helps read the area; actual tile is shader-marked square.
-	tile_outline.mesh = boundary
-	tile_outline.material_override = ghost_color
-	tile_outline.position.y = .055
-	preview_root.add_child(tile_outline)
+	# Full tile boundary is a true 2m x 2m SQUARE, aligned to board origin.
+	tile_outline_root = Node3D.new()
+	tile_outline_root.name = "WorldAligned2mTileBorder"
+	preview_root.add_child(tile_outline_root)
+	for i in range(4):
+		var side := MeshInstance3D.new()
+		side.name = "TileEdge_%d" % i
+		var edge := BoxMesh.new()
+		edge.size = Vector3(2.0,0.018,0.024) if i < 2 else Vector3(0.024,0.018,2.0)
+		side.mesh = edge
+		side.material_override = ghost_color
+		side.position = Vector3(0.0,.01,(-1.0 if i == 0 else 1.0)) if i < 2 else Vector3((-1.0 if i == 2 else 1.0),.01,0.0)
+		tile_outline_root.add_child(side)
 	preview_root.visible = false
 
 func set_preview_held(held: bool) -> void:
@@ -161,6 +165,9 @@ func set_preview_held(held: bool) -> void:
 		return
 	preview_root.visible = true
 	preview_root.position = Vector3(0.0,0.08,0.0)
+	var tile: Vector2i = BOARD_RULES.cell_at(pawn.global_position,pawn.board_origin)
+	var center: Vector3 = BOARD_RULES.cell_center(tile,pawn.board_origin)
+	tile_outline_root.position = Vector3(center.x-pawn.global_position.x,0.0,center.z-pawn.global_position.z)
 	var valid: bool = pawn != null and pawn.is_on_floor() and Vector2(pawn.velocity.x,pawn.velocity.z).length() < .15
 	if valid:
 		var result: Dictionary = _probe_all_feet()
