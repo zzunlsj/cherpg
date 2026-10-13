@@ -26,6 +26,9 @@ jobs:
           use-dotnet: false
           include-templates: true
 
+      - name: Under-one-second source consistency check
+        run: python3 godot/tests/motion_rotation_lab/tests/test_100m_field_source_quick.py
+
       - name: Import resources (build preparation only — no play testing)
         shell: bash
         run: |
