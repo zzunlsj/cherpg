@@ -77,6 +77,15 @@ var capsule_shape: CapsuleShape3D
 var capsule_collider: CollisionShape3D
 var climbing := false
 var climb_normal := Vector3.ZERO
+const MANTLE_TIME := 1.16
+var mantle_active := false
+var mantle_clock := 0.0
+var mantle_start := Vector3.ZERO
+var mantle_up := Vector3.ZERO
+var mantle_over := Vector3.ZERO
+var mantle_finish := Vector3.ZERO
+var mantle_blocked_seconds := 0.0
+var mantle_stage := "NONE"
 var ground_normal := Vector3.UP
 var device: Node3D
 var movement_camera: Camera3D
@@ -276,31 +285,120 @@ func _wall_contact(move_forward: Vector3) -> Dictionary:
 	hit["slope_angle"] = face_angle
 	return hit
 
+func _begin_mantle(target: Vector3) -> void:
+	mantle_active = true
+	mantle_clock = 0.0
+	mantle_blocked_seconds = 0.0
+	mantle_start = global_position
+	mantle_finish = target
+	mantle_up = Vector3(mantle_start.x, target.y + 0.30, mantle_start.z)
+	mantle_over = Vector3(target.x, target.y + 0.30, target.z)
+	mantle_stage = "REACH"
+	climbing = false
+	velocity = Vector3.ZERO
+
 func _try_climb_top_ledge(forward: Vector3) -> void:
-	# The 90° test wall has a solid landing deck at y=3m. Transfer onto it
-	# once the feet are near the top. Still obey voluntary board step limits.
-	if not climbing or climb_normal.y > 0.12:
+	if not climbing or mantle_active or climb_normal.y > 0.12:
 		return
-	var ray_start: Vector3 = global_position + Vector3.UP*1.7 + forward*1.0
-	var ray_end: Vector3 = ray_start + Vector3.DOWN*2.8
-	var query := PhysicsRayQueryParameters3D.create(ray_start,ray_end,1,[get_rid()])
+	var ray_start: Vector3 = global_position + Vector3.UP * 1.55 + forward * 1.05
+	var query := PhysicsRayQueryParameters3D.create(ray_start, ray_start + Vector3.DOWN * 2.8, 1, [get_rid()])
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return
 	var normal: Vector3 = hit["normal"]
 	var roof_y: float = hit["position"].y
 	var remaining: float = roof_y - global_position.y
-	if normal.y < .88 or roof_y < 1.0 or remaining > .50 or remaining < -.12:
+	if normal.y < 0.88 or roof_y < 0.8 or remaining > 0.53 or remaining < -0.15:
 		return
-	var landing: Vector3 = global_position + forward * 1.08
-	landing.y = roof_y + 0.055
-	var permitted: Dictionary = _constrain_step(global_position,landing)
-	if bool(permitted["resisted"]):
+	var destination: Vector3 = global_position + forward * 1.12
+	destination.y = roof_y + 0.055
+	if bool(_constrain_step(global_position,destination)["resisted"]):
 		return
-	global_position = permitted["position"]
+	var roof_capsule := CapsuleShape3D.new()
+	roof_capsule.radius = capsule_shape.radius
+	roof_capsule.height = STANDING_HEIGHT_M
+	var clearance := PhysicsShapeQueryParameters3D.new()
+	clearance.shape = roof_capsule
+	clearance.transform = Transform3D(Basis.IDENTITY,destination+Vector3.UP*(STANDING_HEIGHT_M*0.5+0.03))
+	clearance.collision_mask = collision_mask
+	clearance.exclude = [get_rid()]
+	if not get_world_3d().direct_space_state.intersect_shape(clearance,1).is_empty():
+		return
+	_begin_mantle(destination)
+
+func _mantle_goal(fraction: float) -> Vector3:
+	var t: float = clampf(fraction,0.0,1.0)
+	if t < 0.18:
+		return mantle_start
+	if t < 0.53:
+		return mantle_start.lerp(mantle_up,smoothstep(0.18,0.53,t))
+	if t < 0.80:
+		return mantle_up.lerp(mantle_over,smoothstep(0.53,0.80,t))
+	return mantle_over.lerp(mantle_finish,smoothstep(0.80,1.0,t))
+
+func _update_mantle(delta: float) -> void:
+	if not mantle_active:
+		return
 	velocity = Vector3.ZERO
-	climbing = false
-	jump_state = "GROUNDED"
+	var next_t: float = minf(1.0,(mantle_clock+delta)/MANTLE_TIME)
+	var desired: Vector3 = _mantle_goal(next_t)
+	var constrained: Dictionary = _constrain_step(global_position,desired)
+	if bool(constrained["resisted"]):
+		_abort_mantle()
+		return
+	var motion: Vector3 = constrained["position"]-global_position
+	if motion.length_squared() > 0.00000001:
+		var impact: KinematicCollision3D = move_and_collide(motion)
+		if impact != null:
+			mantle_blocked_seconds += delta
+			if mantle_blocked_seconds > 0.22:
+				_abort_mantle()
+			return
+	mantle_blocked_seconds = 0.0
+	mantle_clock = next_t*MANTLE_TIME
+	var t: float = next_t
+	mantle_stage = "REACH" if t < .18 else ("PULL" if t < .53 else ("SWING" if t < .80 else "LAND"))
+	_update_mantle_pose(t,delta)
+	_clamp_anatomical_joints()
+	_apply_terrain_pose(delta)
+	_prevent_part_penetration(delta)
+	current_cell = BOARD_RULES.cell_at(global_position,board_origin)
+	move_state = "MANTLE "+mantle_stage
+	jump_state = "MANTLING"
+	if next_t >= 1.0:
+		mantle_active = false
+		mantle_stage = "DONE"
+		velocity = Vector3.ZERO
+		jump_state = "GROUNDED"
+
+func _abort_mantle() -> void:
+	mantle_active = false
+	mantle_stage = "BLOCKED"
+	velocity = Vector3.ZERO
+	jump_state = "FALLING"
+
+func _update_mantle_pose(t: float, delta: float) -> void:
+	var blend: float = minf(1.0,delta*15.0)
+	var reach: float = smoothstep(0.0,.18,t)
+	var lift: float = smoothstep(.18,.58,t)
+	var leg_over: float = smoothstep(.53,.84,t)
+	var settle: float = smoothstep(.82,1.0,t)
+	for i in range(2):
+		var delay: float = .08 if i == 0 else 0.0
+		var arm: float = lerpf(0.15,1.06,reach)
+		arm = lerpf(arm,0.75,lift)
+		arm = lerpf(arm,0.02,settle)
+		var knee_bend: float = lerpf(-.35,-1.28,leg_over)
+		knee_bend = lerpf(knee_bend,-.06,settle)
+		var thigh: float = lerpf(-.08,.56,smoothstep(.48+delay,.75+delay,t))
+		thigh = lerpf(thigh,0.0,settle)
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,thigh,blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,knee_bend,blend)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,.12*(1.0-settle),blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,arm,blend)
+		shoulder[i].rotation.z = lerpf(shoulder[i].rotation.z,(-.13 if i==0 else .13)*reach*(1.0-settle),blend)
+	avatar.rotation.x = lerpf(avatar.rotation.x,lerpf(-.12,-.29,lift)*(1.0-settle),blend)
+	avatar.position.y = lerpf(avatar.position.y,-.04*lift*(1.0-settle),blend)
 
 func trigger_attack() -> void:
 	# Unity source: ResetTrigger("attack"), then SetTrigger("attack").
@@ -366,6 +464,9 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bo
 	return next
 
 func _physics_process(delta: float) -> void:
+	if mantle_active:
+		_update_mantle(delta)
+		return
 	_update_crouch_collider(delta,Input.is_key_pressed(KEY_SHIFT))
 	# Ctrl takes priority as a sustained run/climb input; Shift crouch prevents running.
 	running = Input.is_key_pressed(KEY_CTRL) and not crouching
@@ -697,6 +798,9 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	capsule_collider.position.y = STANDING_HEIGHT_M*0.5
 	avatar.scale = Vector3.ONE
 	climbing = false
+	mantle_active = false
+	mantle_clock = 0.0
+	mantle_stage = "NONE"
 	run_blend = 0.0
 	attack_timer = 0.0
 	smoothed_input = 0.0
