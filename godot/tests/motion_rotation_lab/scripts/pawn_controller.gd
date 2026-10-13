@@ -32,6 +32,12 @@ const JUMP_VELOCITY := 6.25      # calculated vertical impulse (separate from 2D
 const JUMP_RELEASE_GRAVITY_MULT := 2.35 # early release => shorter hop
 const FALL_GRAVITY_MULT := 1.20
 const MAX_UPWARD_SPEED := 7.0
+const MAX_ASCENT_ANGLE_DEG := 90.0
+const NORMAL_FLOOR_CUTOFF_DEG := 89.9  # wall at 90 uses contact climbing
+const WALL_CLIMB_MPS := 2.5
+const DASH_SPEED_MPS := 10.5
+const DASH_SECONDS := 0.20
+const DASH_COOLDOWN_SECONDS := 0.85
 const HEADING_NAMES := ["NORTH / -Z", "EAST / +X", "SOUTH / +Z", "WEST / -X"]
 const HEADINGS := [Vector3.FORWARD, Vector3.RIGHT, Vector3.BACK, Vector3.LEFT]
 var heading_index := 0
@@ -59,6 +65,11 @@ var airborne_time := 0.0
 var landing_visual := 0.0
 var takeoff_visual := 0.0
 var jump_state := "GROUNDED"
+var dash_timer := 0.0
+var dash_cooldown := 0.0
+var dash_direction := Vector3.FORWARD
+var climbing := false
+var climb_normal := Vector3.ZERO
 var ground_normal := Vector3.UP
 var device: Node3D
 var movement_camera: Camera3D
@@ -77,7 +88,7 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	floor_snap_length = 0.24
-	floor_max_angle = deg_to_rad(36.0)
+	floor_max_angle = deg_to_rad(NORMAL_FLOOR_CUTOFF_DEG)
 	floor_stop_on_slope = true
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.235
@@ -202,6 +213,35 @@ func queue_jump() -> void:
 func release_jump() -> void:
 	jump_key_down = false
 
+func queue_dash() -> void:
+	if dash_cooldown > 0.0 or dash_timer > 0.0 or not is_on_floor():
+		return
+	if device != null and bool(device.call("is_busy")):
+		return
+	var input_dir := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
+	if input_dir.length() < 0.12:
+		input_dir = Vector2(0.0,1.0)
+	var fwd := _camera_flat_forward()
+	dash_direction = (fwd * input_dir.y + fwd.cross(Vector3.UP) * input_dir.x).normalized()
+	if dash_direction.length_squared() < 0.01:
+		return
+	dash_timer = DASH_SECONDS
+	dash_cooldown = DASH_COOLDOWN_SECONDS
+
+func _wall_contact(camera_forward: Vector3) -> Dictionary:
+	# A true 90° wall does not count as a floor in CharacterBody3D.
+	# Near vertical surfaces receive a separate W-to-climb adhesion velocity.
+	var cast_from: Vector3 = global_position + Vector3.UP * 0.55
+	var cast_to: Vector3 = cast_from + camera_forward * 0.87
+	var ray := PhysicsRayQueryParameters3D.create(cast_from,cast_to,1,[get_rid()])
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
+	if hit.is_empty():
+		return {}
+	var n: Vector3 = hit["normal"]
+	if absf(n.y) > 0.12 or -camera_forward.dot(n) < .72:
+		return {}
+	return hit
+
 func trigger_attack() -> void:
 	# Unity source: ResetTrigger("attack"), then SetTrigger("attack").
 	# Placeholder arm motion; no combat hitbox or damage is invented.
@@ -258,6 +298,8 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bo
 	return next
 
 func _physics_process(delta: float) -> void:
+	dash_cooldown = maxf(0.0,dash_cooldown-delta)
+	dash_timer = maxf(0.0,dash_timer-delta)
 	var was_on_floor: bool = is_on_floor()
 	var fwd: float = float(Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP))
 	var back: float = float(Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN))
@@ -275,11 +317,16 @@ func _physics_process(delta: float) -> void:
 	var input_vector := Vector2(smoothed_strafe, smoothed_input).limit_length(1.0)
 	if device_busy:
 		input_vector = Vector2.ZERO
-	var wants_run: bool = Input.is_key_pressed(KEY_SHIFT) and (not is_zero_approx(raw_axis) or not is_zero_approx(raw_strafe))
+	var wants_run: bool = dash_timer > 0.0  # Shift is a short dash, never hold-to-sprint
 	latest_axis = input_vector.y
 	latest_sprint = wants_run
 	var forward: Vector3 = _camera_flat_forward()
 	var direction: Vector3 = (forward * input_vector.y + forward.cross(Vector3.UP) * input_vector.x).normalized()
+	var contact: Dictionary = _wall_contact(forward) if raw_axis > 0.35 and not device_busy else {}
+	climbing = not contact.is_empty() and (was_on_floor or climbing)
+	if climbing:
+		climb_normal = contact["normal"]
+		dash_timer = 0.0
 
 	if was_on_floor:
 		ground_normal = get_floor_normal()
@@ -305,7 +352,10 @@ func _physics_process(delta: float) -> void:
 		takeoff_visual = 1.0
 		was_on_floor = false
 
-	if not was_on_floor:
+	if climbing:
+		velocity.y = WALL_CLIMB_MPS
+		jump_state = "CLIMBING"
+	elif not was_on_floor:
 		var grav_mult: float = FALL_GRAVITY_MULT if velocity.y < 0.0 else (JUMP_RELEASE_GRAVITY_MULT if not jump_key_down else 1.0)
 		velocity.y -= GRAVITY * grav_mult * delta
 	elif velocity.y <= 0.0:
@@ -317,7 +367,11 @@ func _physics_process(delta: float) -> void:
 	var slope_factor: float = 1.0-clampf(uphill*0.65,-0.10,0.26)
 	var current_horizontal: Vector3 = _horizontal_velocity()
 
-	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, wants_run, delta, was_on_floor, slope_factor)
+	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, false, delta, was_on_floor, slope_factor)
+	if dash_timer > 0.0 and not device_busy:
+		next_horizontal = dash_direction * DASH_SPEED_MPS
+	if climbing:
+		next_horizontal = -climb_normal * 0.18
 	if device_busy:
 		next_horizontal = Vector3.ZERO
 	var starting_position: Vector3 = global_position
@@ -350,7 +404,11 @@ func _physics_process(delta: float) -> void:
 		if airborne_time > 0.055:
 			landing_visual = 1.0
 		jump_state = "GROUNDED"
-	if not is_on_floor():
+	if climbing:
+		move_state = "CLIMB"
+	elif dash_timer > 0.0 and is_on_floor():
+		move_state = "DASH"
+	elif not is_on_floor():
 		move_state = "JUMP" if velocity.y > 0.05 else "FALL"
 	elif _horizontal_velocity().length() < 0.12 and input_vector.length() < SOURCE_MIN_FORCE:
 		move_state = "IDLE"
@@ -360,7 +418,9 @@ func _physics_process(delta: float) -> void:
 		move_state = "WALK"
 
 	var horizontal_speed: float = Vector2(get_real_velocity().x,get_real_velocity().z).length()
-	if is_on_floor():
+	if climbing:
+		_update_climb_pose(delta)
+	elif is_on_floor():
 		_update_gait(delta,horizontal_speed,wants_run,input_vector.length())
 	else:
 		_update_air_pose(delta)
@@ -386,6 +446,19 @@ func apply_forced_displacement(delta_world: Vector3) -> void:
 	move_and_collide(delta_world)
 	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 
+func _update_climb_pose(delta: float) -> void:
+	# Deliberately exaggerated basic-joint motion on a true vertical wall.
+	gait_clock += delta * 5.6
+	var blend := minf(1.0,delta*12.0)
+	for i in range(2):
+		var phase: float = gait_clock + (0.0 if i == 0 else PI)
+		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x,.40 + .33*sin(phase),blend)
+		knee[i].rotation.x = lerpf(knee[i].rotation.x,.78 + .17*cos(phase),blend)
+		feet[i].rotation.x = lerpf(feet[i].rotation.x,-.20,blend)
+		shoulder[i].rotation.x = lerpf(shoulder[i].rotation.x,-1.05 + .25*sin(phase+PI),blend)
+	avatar.rotation.x = lerpf(avatar.rotation.x,-.11,blend)
+	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
+
 func _update_air_pose(delta: float) -> void:
 	# Air poses are separate from horizontal movement / Unity Rigidbody2D code.
 	var rising: bool = velocity.y >= 0.0
@@ -394,8 +467,8 @@ func _update_air_pose(delta: float) -> void:
 	var smooth: float = minf(1.0, delta * 10.0)
 	for i in range(2):
 		var lead: float = 1.0 if i == 0 else -1.0
-		var hip_target: float = (0.18 + 0.20 * ascent) * lead if rising else -0.09 + descent * 0.15 * lead
-		var knee_target: float = (0.42 - 0.08 * ascent) if rising else 0.14 + 0.18 * descent
+		var hip_target: float = (0.29 + 0.23 * ascent) * lead if rising else -0.17 + descent * 0.24 * lead
+		var knee_target: float = (0.70 - 0.10 * ascent) if rising else 0.28 + 0.22 * descent
 		var arm_target: float = (-0.48 + 0.15 * ascent) if rising else 0.13 + 0.12 * descent
 		upper_leg[i].rotation.x = lerpf(upper_leg[i].rotation.x, hip_target, smooth)
 		knee[i].rotation.x = lerpf(knee[i].rotation.x, knee_target, smooth)
@@ -414,8 +487,8 @@ func _update_gait(delta: float, horizontal_speed: float, running: bool, axis: fl
 	var activity: float = locomotion * clampf(axis * 2.1, 0.0, 1.0)
 	if activity > 0.02:
 		gait_clock += horizontal_speed * delta * lerpf(2.1, 2.68, run_blend)
-	var stride: float = lerpf(0.36, 0.60, run_blend) * activity
-	var lift: float = lerpf(0.22, 0.45, run_blend) * activity
+	var stride: float = lerpf(0.48, 0.80, run_blend) * activity
+	var lift: float = lerpf(0.40, 0.76, run_blend) * activity
 	var slope_scale: float = clampf(floor_deg / 25.0, 0.0, 1.0)
 	var uphill: float = maxf(0.0, slope_sign) * slope_scale
 	var downhill: float = maxf(0.0, -slope_sign) * slope_scale
@@ -457,12 +530,15 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	velocity = Vector3.ZERO
 	lane_index = index
 	heading_index = 0
-	board_origin = Vector3(world_x, 0.0, world_z)
-	current_cell = Vector2i.ZERO
+	board_origin = Vector3.ZERO # continuous world-aligned 2m x 2m tiles
+	current_cell = BOARD_RULES.cell_at(global_position, board_origin)
 	resistance_time = 0.0
 	resistance_attempts = 0
 	smoothed_strafe = 0.0
 	gait_clock = 0.0
+	dash_timer = 0.0
+	dash_cooldown = 0.0
+	climbing = false
 	run_blend = 0.0
 	attack_timer = 0.0
 	smoothed_input = 0.0
