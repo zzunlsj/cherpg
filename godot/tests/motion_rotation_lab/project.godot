@@ -1,10 +1,10 @@
-; CheRPG standalone locomotion / direction-device lab. Godot 4.5.2
+; CheRPG standalone locomotion / direction-device lab. Godot 4.7.2
 config_version=5
 
 [application]
-config/name="CheRPG | Canon Rules Motion Lab 0.0.7v"
+config/name="CheRPG | Canon Rules Motion Lab 0.0.8v"
 run/main_scene="res://scenes/MotionLab.tscn"
-config/features=PackedStringArray("4.5", "GL Compatibility")
+config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]
 window/size/viewport_width=1400
