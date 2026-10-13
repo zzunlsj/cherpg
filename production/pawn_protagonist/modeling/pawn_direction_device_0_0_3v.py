@@ -1,6 +1,6 @@
 """CheRPG 0.0.3v primitive-only waist direction mechanism.
 Run via CheRPG Blender Tool (Blender 5.2.2+):
-  blender --background --python pawn_direction_device_0_0_2v.py -- OUTPUT_DIR
+  blender --background --python pawn_direction_device_0_0_3v.py -- OUTPUT_DIR
 Character is NOT modified. Only the rule-based heading marker rotates.
 """
 import bpy
@@ -246,6 +246,6 @@ report_grounding={
     "steep_terrain_rejected":not solve(PRESETS["too_steep_30deg"])["safe"],
     "foot_contacts":contact["feet"],
 }
-(out/"direction-grounding-0.0.3v.json").write_text(
+(output/"direction-grounding-0.0.3v.json").write_text(
     json.dumps(report_grounding,ensure_ascii=False,indent=2),encoding="utf-8")
 print("CHERPG_GROUND_CONTACT_CHECK_OK",report_grounding["all_anchors_supported"])
