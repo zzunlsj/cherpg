@@ -247,11 +247,12 @@ func station_name(index: int) -> String:
 		"90 DEG CLIMB WALL","UNEVEN PATCH","STAIRS"]
 	return labels[i]
 
-func set_board_debug_visible(enabled: bool) -> void:
-	# I toggles all chess-cell boundaries and the checker contrast at once.
-	board_grid_visible = enabled
+func set_board_debug_visible(_enabled: bool) -> void:
+	# Compatibility only. The tile pattern always remains visible now:
+	# I changes voluntary movement rules, NEVER the visual ground shader.
+	board_grid_visible = true
 	for mat in all_grid_materials:
-		mat.set_shader_parameter("board_visible", 1.0 if enabled else 0.0)
+		mat.set_shader_parameter("board_visible", 1.0)
 
 func board_visible() -> bool:
 	return board_grid_visible
