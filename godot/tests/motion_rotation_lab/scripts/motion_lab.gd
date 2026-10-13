@@ -166,7 +166,7 @@ func _update_hud() -> void:
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
 	info.text = "CheRPG | 100m x 100m / 2m GRID | 0.0.13v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
-		+ "BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
+		+ "CAMERA: %.0f°/90° | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
 		+ "TILE: (%d,%d) | %s | PREVIEW: %s | DASH CD: %.1fs" % [pawn.current_cell.x,pawn.current_cell.y,rule_status,pawn.device.preview_reason,pawn.dash_cooldown]
 
