@@ -1,10 +1,10 @@
 extends RefCounted
-## CheRPG: invisible 2 m board overlain by ordinary physical terrain.
+## CheRPG: invisible 4 m board overlain by ordinary physical terrain.
 ## Within one tile, movement is unrestricted. Crossing into another tile
 ## voluntarily uses the Pawn's active heading (-Z, +X, +Z, -X).
 ## Forced movement is processed separately by pawn_controller.gd.
-const TILE_SIZE_M := 2.0
-const HALF_TILE_M := 1.0
+const TILE_SIZE_M := 4.0
+const HALF_TILE_M := 2.0
 const EDGE_EPSILON := 0.002
 const CARDINAL_OFFSETS := [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
 
