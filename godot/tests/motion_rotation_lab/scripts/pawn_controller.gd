@@ -5,10 +5,13 @@ extends CharacterBody3D
 # The Pawn moves freely inside a tile; voluntary crossing obeys chess heading.
 # Source input smoothing: Mathf.MoveTowards(current, raw, delta * 10).
 # Source speed caps: 4.0 walk; 4.0 * 1.5 = 6.0 sprint.
-# Source force model: force=20000, sprint x2, strong release braking.
-# Unity's AddForce(force * fixedDeltaTime) uses an EXTRA timestep; direct
-# numeric port to CharacterBody3D would be mass/step dependent. Expose an
-# intentionally calibrated acceleration instead, preserving the response shape.
+# Faithful planar port of the uploaded pawn_player(2).cs 2D Rigidbody:
+# inputVec -> ClampMagnitude -> force/friction branches -> force * fixedDeltaTime
+# passed to AddForce(FORCE), i.e. delta velocity = force*delta^2/mass.
+# Godot CharacterBody3D has no Rigidbody mass/2D gravityScale; exposed virtual
+# source mass/scale emulate Unity's default values without changing 3D gravity.
+# User override: original LeftShift sprint is mapped to held Ctrl here,
+# preserving established Shift=crouch and Ctrl=run / grabbable-climb.
 const BOARD_RULES = preload("res://scripts/board_rules.gd")
 const INPUT_SMOOTHING_PER_SEC := 10.0
 const WALK_MPS := 4.0
@@ -19,10 +22,9 @@ const SOURCE_STOP_FRICTION := 0.5
 const SOURCE_MOVE_FRICTION := 0.3
 const SOURCE_MIN_SPEED := 0.1
 const SOURCE_MIN_FORCE := 0.1
-const GROUND_PUSH_ACCEL := 38.0    # m/s² calibrated, not 1:1 Newton translation
-const GROUND_RELEASE_BRAKE := 56.0 # replicates strong -velocity.normalized*maxForce
-const AIR_PUSH_ACCEL := 7.0
-const AIR_BRAKE := 3.5
+# Unity Rigidbody2D defaults. Godot CharacterBody3D has no mass/gravityScale.
+@export_range(0.05,100.0,0.05) var source_rigidbody_mass := 1.0
+@export_range(0.0,20.0,0.05) var source_rigidbody_gravity_scale := 1.0
 const GRAVITY := 18.0
 # Pawn root at ground level; spawn starts above the sampled surface.
 const SPAWN_CLEARANCE_M := 0.20
@@ -63,6 +65,8 @@ var resistance_time := 0.0
 var resistance_attempts := 0
 var latest_axis := 0.0
 var latest_sprint := false
+var source_fixed_input_vec := Vector2.ZERO # Unity fixedInputVec (planar x,z)
+var source_force_vec := Vector2.ZERO # Unity force prior to AddForce
 var jump_buffer_left := 0.0
 var coyote_left := 0.0
 var jump_key_down := false
@@ -499,37 +503,51 @@ func _constrain_step(from_position: Vector3, to_position: Vector3) -> Dictionary
 
 ## Independent testable planar physics adapter for the Unity movement feel.
 ## Godot move_and_slide() will handle final collider response after this update.
-func _source_feel_horizontal(current: Vector3, input_vector: Vector2, sprint: bool, delta: float, floor: bool, slope_multiplier: float) -> Vector3:
-	var speed_cap: float = (RUN_MPS if sprint else WALK_MPS) * slope_multiplier
-	if crouching:
-		speed_cap = minf(speed_cap,CROUCH_MPS)
-	var forward: Vector3 = _camera_flat_forward()
-	var right: Vector3 = forward.cross(Vector3.UP)
-	var intended: Vector3 = (right * input_vector.x + forward * input_vector.y).limit_length(1.0)
-	var magnitude: float = minf(1.0, input_vector.length())
-	var push: float = GROUND_PUSH_ACCEL if floor else AIR_PUSH_ACCEL
-	if sprint:
-		push *= SOURCE_SPRINT_FORCE_MULT
-	var braking: float = GROUND_RELEASE_BRAKE if floor else AIR_BRAKE
-	var current_speed: float = current.length()
-	var next: Vector3 = current
-	if magnitude < SOURCE_MIN_FORCE:
-		# Match the C# extra braking force on release (not linear drag only).
-		next = current.move_toward(Vector3.ZERO, braking * delta)
-	elif current_speed <= SOURCE_MIN_SPEED:
-		# Source uses static friction before the movement threshold.
-		var step: float = maxf(0.0, magnitude * push - SOURCE_STOP_FRICTION) * delta
-		next = current + intended.normalized() * step
+func _source_feel_horizontal(current: Vector3, input_vector: Vector2, is_sprint: bool, delta: float) -> Vector3:
+	# Faithful translation of pawn_player(2).cs::FixedUpdate(), applied to
+	# camera-relative XZ velocity; jump/gravity remain separate Godot 3D systems.
+	#
+	# C#: fixedInputVec=ClampMagnitude(inputVec,1).
+	# When slow: input.normalized*max(input.length*maxForce - mass*gScale*stopFriction,0)
+	# When moving: input*maxForce - normalized(velocity)*mass*gScale*moveFriction.
+	# When idle while moving: subtract normalized(velocity)*maxForce.
+	# force below minForce stops immediately; sprint doubles nonzero force.
+	# AddForce(force * fixedDeltaTime) uses FORCE -> delta_v = force*dt^2/mass.
+	var mass: float = maxf(0.0001,source_rigidbody_mass)
+	var gravity_scale: float = source_rigidbody_gravity_scale
+	source_fixed_input_vec = input_vector.limit_length(1.0)
+	var input_magnitude: float = source_fixed_input_vec.length()
+	var planar_velocity := Vector2(current.x,current.z)
+	var current_speed: float = planar_velocity.length()
+	var planar_direction: Vector2 = source_fixed_input_vec.normalized() if input_magnitude > 0.0 else Vector2.ZERO
+	var force := Vector2.ZERO
+	if current_speed <= SOURCE_MIN_SPEED:
+		var static_push: float = maxf(input_magnitude * SOURCE_MAX_FORCE - mass * gravity_scale * SOURCE_STOP_FRICTION,0.0)
+		force = planar_direction * static_push
+		if input_magnitude < SOURCE_MIN_FORCE:
+			force = Vector2.ZERO
 	else:
-		# Driving force minus velocity-aligned kinetic drag.
-		var acceleration: Vector3 = intended * push - current.normalized() * SOURCE_MOVE_FRICTION
-		next = current + acceleration * delta
-	# Velocity clipping corresponds to the C# Rigidbody2D speed-cap branches.
-	if next.length() > speed_cap:
-		next = next.normalized() * speed_cap
-	if magnitude < SOURCE_MIN_FORCE and next.length() < SOURCE_MIN_SPEED:
-		next = Vector3.ZERO
-	return next
+		# C# uses input.normalized * input.magnitude, equal to clamped input.
+		force = source_fixed_input_vec * SOURCE_MAX_FORCE \
+			- planar_velocity.normalized() * mass * gravity_scale * SOURCE_MOVE_FRICTION
+		if input_magnitude < SOURCE_MIN_FORCE:
+			force -= planar_velocity.normalized() * SOURCE_MAX_FORCE
+	# The original zero-force branch immediately resets linearVelocity.
+	if force.length() < SOURCE_MIN_FORCE:
+		force = Vector2.ZERO
+		planar_velocity = Vector2.ZERO
+	elif is_sprint:
+		force *= SOURCE_SPRINT_FORCE_MULT
+	source_force_vec = force
+	if force.length() >= SOURCE_MIN_FORCE:
+		planar_velocity += force * (delta * delta / mass)
+	# Preserve original speed clipping AFTER the force calculation.
+	var cap: float = WALK_MPS * (1.5 if is_sprint else 1.0)
+	if crouching:
+		cap = minf(cap,CROUCH_MPS) # CheRPG override: Shift crouch is preserved.
+	if planar_velocity.length() > cap:
+		planar_velocity = planar_velocity.normalized() * cap
+	return Vector3(planar_velocity.x,0.0,planar_velocity.y)
 
 func _physics_process(delta: float) -> void:
 	if mantle_active:
@@ -603,10 +621,11 @@ func _physics_process(delta: float) -> void:
 	var uphill: float = -ground_normal.dot(direction) if was_on_floor else 0.0
 	slope_sign = uphill
 	# Terrain changes only speed cap, not the original input ramp/brake shape.
-	var slope_factor: float = 1.0-clampf(uphill*0.65,-0.10,0.26)
 	var current_horizontal: Vector3 = _horizontal_velocity()
 
-	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, wants_run, delta, was_on_floor, slope_factor)
+	# Ctrl selects C#'s isSprint; Shift still crouches, never sprints.
+	# Keep the source's full 4.0/6.0m/s caps, without extra slope speed cap.
+	var next_horizontal := _source_feel_horizontal(current_horizontal, input_vector, running, delta)
 	if climbing:
 		var wall_motion: Vector3 = _climb_wall_up() * (climb_input.y * WALL_CLIMB_MPS) 			+ _climb_wall_right() * (climb_input.x * WALL_SIDE_MPS)
 		# Wall grip holds in place with Ctrl alone; never apply inward drift.
