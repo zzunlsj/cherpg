@@ -20,7 +20,7 @@ const SOURCE_MAX_FORCE := 20000.0
 const SOURCE_SPRINT_FORCE_MULT := 2.0
 const SOURCE_STOP_FRICTION := 0.5
 const SOURCE_MOVE_FRICTION := 0.3
-const SOURCE_MIN_SPEED := 0.1
+const SOURCE_MIN_SPEED := 0.6 # raised threshold to suppress low-speed input jitter
 const SOURCE_MIN_FORCE := 0.1
 # Unity Rigidbody2D defaults. Godot CharacterBody3D has no mass/gravityScale.
 @export_range(0.05,100.0,0.05) var source_rigidbody_mass := 1.0
@@ -520,7 +520,15 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, is_sprint:
 	var input_magnitude: float = source_fixed_input_vec.length()
 	var planar_velocity := Vector2(current.x,current.z)
 	var current_speed: float = planar_velocity.length()
-	var planar_direction: Vector2 = source_fixed_input_vec.normalized() if input_magnitude > 0.0 else Vector2.ZERO
+	# The Unity source input is local to the player. Rotate its planar
+	# axes with the orbit yaw BEFORE applying force in Godot world-space.
+	# Previous camera-relative behavior and 90-degree top-view remain.
+	var camera_forward: Vector3 = _camera_flat_forward()
+	var camera_right: Vector3 = camera_forward.cross(Vector3.UP)
+	var world_direction: Vector3 = (camera_right * source_fixed_input_vec.x
+		+ camera_forward * source_fixed_input_vec.y).limit_length(1.0)
+	var world_input: Vector2 = Vector2(world_direction.x,world_direction.z)
+	var planar_direction: Vector2 = world_input.normalized() if input_magnitude > 0.0 else Vector2.ZERO
 	var force := Vector2.ZERO
 	if current_speed <= SOURCE_MIN_SPEED:
 		var static_push: float = maxf(input_magnitude * SOURCE_MAX_FORCE - mass * gravity_scale * SOURCE_STOP_FRICTION,0.0)
@@ -529,7 +537,7 @@ func _source_feel_horizontal(current: Vector3, input_vector: Vector2, is_sprint:
 			force = Vector2.ZERO
 	else:
 		# C# uses input.normalized * input.magnitude, equal to clamped input.
-		force = source_fixed_input_vec * SOURCE_MAX_FORCE \
+		force = world_input * SOURCE_MAX_FORCE \
 			- planar_velocity.normalized() * mass * gravity_scale * SOURCE_MOVE_FRICTION
 		if input_magnitude < SOURCE_MIN_FORCE:
 			force -= planar_velocity.normalized() * SOURCE_MAX_FORCE
