@@ -13,7 +13,14 @@ var camera_yaw := 0.0
 var camera_elevation := deg_to_rad(24.0)
 const CAMERA_ELEVATION_MIN := -PI / 7.2
 const CAMERA_ELEVATION_MAX := PI / 2.0
-var camera_distance := 6.8
+var camera_distance := 6.8 # Desired orbit radius when nothing blocks the view.
+const CAMERA_COLLISION_RADIUS := 0.23 # Sphere keeps near-plane away from walls.
+const CAMERA_SURFACE_MARGIN := 0.08
+const CAMERA_FOLLOW_SPEED := 8.0
+const CAMERA_RECOVER_SPEED := 4.5
+var camera_actual_distance := 6.8
+var camera_wall_blocked := false
+var camera_query_sphere: SphereShape3D
 var camera_target := Vector3.ZERO
 var board_rules_enabled := true
 var active_station := 0
@@ -28,6 +35,9 @@ func _ready() -> void:
 	camera = Camera3D.new()
 	camera.name = "FollowCamera"
 	camera.fov = 65.0
+	camera.near = 0.06
+	camera_query_sphere = SphereShape3D.new()
+	camera_query_sphere.radius = CAMERA_COLLISION_RADIUS
 	camera.current = true
 	add_child(camera)
 	pawn.set_movement_camera(camera)
@@ -74,7 +84,7 @@ func _build_ui() -> void:
 	info.add_theme_font_size_override("font_size",16)
 	content.add_child(info)
 	help_label = Label.new()
-	help_label.text = "WASD: camera movement | Ctrl + W: grab/ascend a 30°+ marked wall\nClimbing + Ctrl: HOLD | W/S: UP/DOWN | A/D: SIDEWAYS (fixed wall axes, no camera steering)\nShift: CROUCH | I: chess movement limits ONLY | F hold: footprint / release: anchor\nO: reset | Space: jump | 1-9,0: stations | Mouse: 90° orbit | Esc: cursor"
+	help_label.text = "WASD: camera movement | Ctrl + W: grab/ascend a 30°+ marked wall\nClimbing + Ctrl: HOLD | W/S: UP/DOWN | A/D: SIDEWAYS (fixed wall axes, no camera steering)\nShift: CROUCH | I: chess movement limits ONLY | F hold: footprint / release: anchor\nO: reset | Space: jump | 1-9,0: stations | Mouse: 90° orbit (wall-safe camera) | Esc: cursor"
 	help_label.add_theme_font_size_override("font_size",14)
 	content.add_child(help_label)
 	_update_hud()
@@ -87,6 +97,29 @@ func _process(delta: float) -> void:
 	if pawn != null and pawn.device != null:
 		pawn.device.call("set_preview_held",Input.is_key_pressed(KEY_F))
 
+func _camera_collision_clamp(pivot: Vector3, wanted: Vector3) -> Vector3:
+	# A sphere sweep tests the entire camera arm, not merely its end point.
+	# The same volume is checked on EVERY frame, including camera rotation
+	# and target smoothing. Layer 1 = level geometry; Pawn uses layer 2.
+	var motion: Vector3 = wanted - pivot
+	if motion.length_squared() < 0.000001:
+		return pivot
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = camera_query_sphere
+	query.transform = Transform3D(Basis.IDENTITY,pivot)
+	query.motion = motion
+	query.margin = 0.015
+	query.collision_mask = 1
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	var safe: PackedFloat32Array = get_world_3d().direct_space_state.cast_motion(query)
+	if safe.size() < 1:
+		return wanted
+	var safe_fraction: float = clampf(safe[0],0.0,1.0)
+	var movement_length: float = motion.length()
+	var allowed_distance: float = maxf(0.0,movement_length * safe_fraction - CAMERA_SURFACE_MARGIN)
+	return pivot + motion.normalized() * allowed_distance
+
 func _update_camera(delta: float) -> void:
 	if pawn == null or camera == null:
 		return
@@ -94,7 +127,19 @@ func _update_camera(delta: float) -> void:
 	camera_target = camera_target.lerp(desired_target,clampf(delta*7.0,0.0,1.0))
 	var lateral := Vector3(sin(camera_yaw),0,cos(camera_yaw))
 	var desired := camera_target + lateral * camera_distance * cos(camera_elevation) + Vector3.UP * camera_distance * sin(camera_elevation)
-	camera.global_position = camera.global_position.lerp(desired,clampf(delta*8.0,0.0,1.0))
+	# First clamp desired orbit against walls/floors/ceilings. Pull forward
+	# immediately on collision; restore the normal 6.8m orbit gradually.
+	var obstacle_safe: Vector3 = _camera_collision_clamp(camera_target,desired)
+	var safe_distance: float = camera_target.distance_to(obstacle_safe)
+	camera_wall_blocked = safe_distance < camera_distance - 0.10
+	var speed: float = CAMERA_FOLLOW_SPEED if camera_wall_blocked else CAMERA_RECOVER_SPEED
+	var interpolated: Vector3 = camera.global_position.lerp(obstacle_safe,clampf(delta*speed,0.0,1.0))
+	# Smoothing/orbit rotation itself might sweep the camera through a wall.
+	# Clamp the interpolated final camera as well, not just the desired arm.
+	camera.global_position = _camera_collision_clamp(camera_target,interpolated)
+	camera_actual_distance = camera.global_position.distance_to(camera_target)
+	# Keep the Pawn in view even when a wall forces a very close camera.
+	camera.fov = lerpf(80.0,65.0,clampf((camera_actual_distance-0.65)/2.5,0.0,1.0))
 	# At 90°, World UP is parallel to the downward view. Choose a stable
 	# horizontal camera-up vector to prevent look_at's singularity/roll flip.
 	var stable_up: Vector3 = -lateral if camera_elevation >= deg_to_rad(89.0) else Vector3.UP
@@ -169,9 +214,9 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.17v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.18v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
-		+ "CAMERA: %.0f°/90° | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
+		+ "CAMERA: %.0f°/90° | ARM: %.2f/%.2fm (%s) | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),camera_actual_distance,camera_distance,("WALL" if camera_wall_blocked else "CLEAR"),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
 		+ "TILE: (%d,%d) | MOVE LIMIT: %s | F: %s | STANCE: %s | RUN: %s\n" % [pawn.current_cell.x,pawn.current_cell.y,("ON / "+rule_status if board_rules_enabled else "OFF"),pawn.device.preview_reason,("CROUCH" if pawn.crouching else "STAND"),("YES" if pawn.running else "NO")] \
 		+ "MANTLE: %s | GRIP: %s | WALL INPUT: (%.1f,%.1f) | PARTS: %d | POSE FIXES: %d" % [pawn.mantle_stage,("HOLD" if pawn.climbing and pawn.climb_input.length_squared() < .001 else ("MOVE" if pawn.climbing else "OFF")),pawn.climb_input.x,pawn.climb_input.y,pawn.part_probes.size(),pawn.collision_corrections]
