@@ -1,4 +1,4 @@
-name: CheRPG Windows EXE (0.0.20v)
+name: CheRPG Windows EXE (0.0.21v)
 
 on:
   pull_request:
@@ -61,6 +61,17 @@ jobs:
             exit 1
           fi
 
+      - name: Reject runtime model or device mesh scaling in animations
+        run: python3 godot/tests/motion_rotation_lab/tests/test_rigid_animation_source_quick.py
+
+      - name: Short Godot rigid animation geometry check (not long gameplay)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
+            --script res://tests/check_rigid_animation_geometry_0.0.21v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
+          grep -F 'CHERPG_RIGID_ANIMATION_GEOMETRY_PASS' "$RUNNER_TEMP/geometry.log"
+
       - name: Export one self-contained Windows x86_64 EXE
         shell: bash
         run: |
@@ -68,9 +79,9 @@ jobs:
           PROJECT="$PWD/godot/tests/motion_rotation_lab"
           mkdir -p "$PROJECT/build"
           godot --headless --path "$PROJECT" --export-release \
-            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.20v.exe"
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.21v.exe"
 
-          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.20v.exe"
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.21v.exe"
           test -s "$EXE"
           python3 - "$EXE" <<'PY'
           from pathlib import Path
@@ -96,15 +107,15 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="godot/tests/motion_rotation_lab"
-          cp "$PROJECT/docs/WINDOWS_EXE_0.0.20v.md" \
-             "$PROJECT/build/README-WINDOWS-0.0.20v.md"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.21v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.21v.md"
 
       - name: Publish Windows test executable
         uses: actions/upload-artifact@v4
         with:
-          name: CheRPG-MotionLab-Windows-0.0.20v
+          name: CheRPG-MotionLab-Windows-0.0.21v
           path: |
-            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.20v.exe
-            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.20v.md
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.21v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.21v.md
           retention-days: 14
           if-no-files-found: error
