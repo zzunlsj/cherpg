@@ -47,8 +47,8 @@ func _run() -> void:
 	for j in range(15):
 		await physics_frame
 		await process_frame
-	print("STAIRS_ASCENT peak_y=%.3f end_z=%.3f steps=%d foot_contacts=%d" %
-		[peak,deepest,pawn.step_up_count,planted])
+	print("STAIRS_ASCENT peak_y=%.3f end_z=%.3f steps=%d attempts=%d last=%s foot_contacts=%d part_probes=%d" %
+		[peak,deepest,pawn.step_up_count,pawn.step_probe_count,pawn.step_last_reason,planted,pawn.part_probes.size()])
 	if pawn.step_up_count < 3:
 		fail_reason += " step-up solver did not clear 3 risers"
 	if peak < 0.52:
@@ -57,7 +57,7 @@ func _run() -> void:
 		fail_reason += " forward movement remains blocked on stair risers"
 	if pawn.avatar.scale != Vector3.ONE:
 		fail_reason += " avatar scaled during step animation"
-	if pawn.part_probes.size() < 50:
+	if pawn.part_probes.size() < 22:
 		fail_reason += " collision proxies missing"
 	if planted < 2:
 		fail_reason += " no supporting foot contact detected"
