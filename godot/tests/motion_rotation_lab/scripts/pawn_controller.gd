@@ -46,6 +46,13 @@ const STANDING_HEIGHT_M := 1.60 # includes helmet orb and collision margin
 const CROUCH_HEIGHT_M := 1.02
 const CROUCH_TRANSITION_RATE := 7.5
 const MAX_KNEE_FLEX_RAD := 1.65
+const MAX_STEP_HEIGHT_M := 0.225 # safely clears 0.16m stair risers
+const STEP_FORWARD_MIN_M := 0.008
+const FOOT_SOLE_CLEARANCE_M := 0.005
+const IK_THIGH_LENGTH_M := 0.242
+const IK_SHIN_LENGTH_M := 0.325
+const FOOT_PLANT_STANCE_RATIO := 0.60
+const FOOT_IK_MAX_REACH_ERROR_M := 0.035
 const HEADING_NAMES := ["NORTH / -Z", "EAST / +X", "SOUTH / +Z", "WEST / -X"]
 const HEADINGS := [Vector3.FORWARD, Vector3.RIGHT, Vector3.BACK, Vector3.LEFT]
 var heading_index := 0
@@ -97,6 +104,11 @@ var mantle_finish := Vector3.ZERO
 var mantle_blocked_seconds := 0.0
 var mantle_stage := "NONE"
 var ground_normal := Vector3.UP
+var step_up_count := 0
+var foot_contacts: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
+var foot_contact_valid: Array[bool] = [false,false]
+var hand_contact_valid: Array[bool] = [false,false]
+var hand_contacts: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var device: Node3D
 var movement_camera: Camera3D
 # Stable camera yaw-forward vector used at every pitch, including true 90°.
@@ -607,6 +619,49 @@ func _process(delta: float) -> void:
 	smoothed_strafe = move_toward(smoothed_strafe,target_x,delta * INPUT_SMOOTHING_PER_SEC)
 	smoothed_input = move_toward(smoothed_input,target_y,delta * INPUT_SMOOTHING_PER_SEC)
 
+func _try_step_up(start_position: Vector3, desired_horizontal: Vector3, was_grounded: bool) -> bool:
+	# A vertical 16cm stair riser isn't a floor. Detect *blocked* planar travel,
+	# sweep a capsule up, across the landing, then sample the supporting top.
+	# Does not bypass 4m chess-cell voluntary movement restrictions.
+	if not was_grounded or climbing or mantle_active or desired_horizontal.length() < STEP_FORWARD_MIN_M:
+		return false
+	var attempted: Vector3 = Vector3(desired_horizontal.x,0.0,desired_horizontal.z)
+	var actual: Vector3 = global_position - start_position
+	var advancement: float = Vector3(actual.x,0.0,actual.z).dot(attempted.normalized())
+	if advancement >= attempted.length() * 0.65:
+		return false # not obstructed; never auto-levitate on ordinary terrain
+	var raised := Transform3D(global_transform.basis,global_position)
+	if test_move(raised,Vector3.UP*MAX_STEP_HEIGHT_M):
+		return false # insufficient head/ceiling clearance
+	raised.origin += Vector3.UP*MAX_STEP_HEIGHT_M
+	# Move the remaining full planned horizontal displacement at elevated height.
+	var remaining: Vector3 = attempted-Vector3(actual.x,0.0,actual.z)
+	if remaining.dot(attempted) <= 0.0 or test_move(raised,remaining):
+		return false
+	var destination: Vector3 = raised.origin+remaining
+	var down_ray := PhysicsRayQueryParameters3D.create(
+		destination+Vector3.UP*0.08,destination+Vector3.DOWN*(MAX_STEP_HEIGHT_M+0.15),
+		1,[get_rid()])
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(down_ray)
+	if hit.is_empty():
+		return false
+	var top: Vector3 = hit["position"]
+	var height_gain: float = top.y-start_position.y
+	if height_gain < 0.045 or height_gain > MAX_STEP_HEIGHT_M-0.015:
+		return false
+	if hit["normal"].y < cos(floor_max_angle):
+		return false
+	var landing := Vector3(destination.x,top.y+0.012,destination.z)
+	if bool(_constrain_step(start_position,landing)["resisted"]):
+		return false
+	# Upward and horizontal capsule sweeps both passed; the last tiny
+	# descent intentionally contacts the step platform, not its front wall.
+	global_position = landing
+	velocity.y = -0.4
+	apply_floor_snap()
+	step_up_count += 1
+	return true
+
 func _physics_process(delta: float) -> void:
 	if mantle_active:
 		_update_mantle(delta)
@@ -697,6 +752,10 @@ func _physics_process(delta: float) -> void:
 	velocity.x = next_horizontal.x
 	velocity.z = next_horizontal.z
 	move_and_slide()
+	# Godot's slope handling cannot surmount vertical BoxShape stair risers.
+	# Intentional short physics-step search, only after a blocked grounded move.
+	if not climbing:
+		_try_step_up(starting_position,next_horizontal*delta,was_on_floor)
 	if climbing and climb_input.y > 0.25:
 		_try_climb_top_ledge(-climb_normal)
 	# Physical collision resolution and airborne drift must obey the same rule.
@@ -1164,6 +1223,9 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	if device != null:
 		device.position.y = 0.0
 	climbing = false
+	step_up_count = 0
+	foot_contact_valid = [false,false]
+	hand_contact_valid = [false,false]
 	climb_contact_grace = 0.0
 	climb_input = Vector2.ZERO
 	mantle_active = false
