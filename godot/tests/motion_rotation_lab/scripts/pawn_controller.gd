@@ -102,6 +102,7 @@ var movement_camera: Camera3D
 # Stable camera yaw-forward vector used at every pitch, including true 90°.
 var camera_orbit_forward := Vector3.FORWARD
 var avatar: Node3D
+var upper_body_pivot: Node3D # articulated torso/neck/head hinge; NEVER scale the visual
 var upper_leg: Array[Node3D] = []
 var knee: Array[Node3D] = []
 var shoulder: Array[Node3D] = []
@@ -142,6 +143,7 @@ func _ready() -> void:
 	avatar.name = "PrimitivePawnVisual"
 	add_child(avatar)
 	_build_primitive_body()
+	_install_upper_body_pivot()
 	_create_part_collision_proxies(avatar)
 	_record_safe_joint_pose()
 	device = preload("res://scripts/direction_device.gd").new()
@@ -246,6 +248,27 @@ func _build_primitive_body() -> void:
 	lower_band.rotation.y = deg_to_rad(0.0)
 	_box(avatar,"HEAD_Helmet_Crown",Vector3(0,1.439,0),Vector3(.235,.055,.22),ivory)
 	_ball(avatar,"HEAD_PawnOrb",Vector3(0,1.515,0),Vector3(.035,.035,.035),ivory)
+
+
+func _install_upper_body_pivot() -> void:
+	# Move the *rigid* upper-body pieces under a common hip/spine hinge.
+	# Reparent preserving transforms, so the 1.55m standing model is unchanged.
+	# Crouching rotates this hinge forward instead of shortening ANY mesh.
+	upper_body_pivot = Node3D.new()
+	upper_body_pivot.name = "RIG_UpperBodyWaistHinge_NoScaling"
+	avatar.add_child(upper_body_pivot)
+	upper_body_pivot.position = Vector3(0.0,0.72,0.0)
+	for child in avatar.get_children():
+		if child == upper_body_pivot:
+			continue
+		var upper: bool = child.name.begins_with("HEAD_") \
+			or child.name == "BODY_Torso" \
+			or child.name == "BODY_UpperChest" \
+			or child.name == "BODY_Neck" \
+			or child.name.ends_with("_ShoulderPivot")
+		if upper and child is Node3D:
+			(child as Node3D).reparent(upper_body_pivot,true)
+
 
 # Jump input is independent from the horizontal movement source/axis.
 # It is called by MotionLab on KEY_SPACE down; release_jump on KEY_SPACE up.
@@ -730,7 +753,9 @@ func _physics_process(delta: float) -> void:
 		_update_air_pose(delta)
 	_apply_attack_pose(delta)
 	_clamp_anatomical_joints()
-	avatar.scale.y = lerpf(1.0,0.67,crouch_blend)
+	# Crouch by bending a real spine hinge, never by squashing the Pawn.
+	upper_body_pivot.rotation.x = lerpf(upper_body_pivot.rotation.x,
+		-0.94*crouch_blend, minf(1.0,delta*12.0))
 	_apply_terrain_pose(delta)
 	_apply_surface_tilt(delta)
 	_prevent_part_penetration(delta)
@@ -908,7 +933,7 @@ func _update_crouch_pose(delta: float, horizontal_speed: float, axis: float) -> 
 		elbow[i].rotation.x = lerpf(elbow[i].rotation.x,.39,blend)
 	avatar.rotation.x = lerpf(avatar.rotation.x,0.09,blend)
 	avatar.rotation.z = lerpf(avatar.rotation.z,0.01*sin(gait_clock)*crawl_activity,blend)
-	avatar.position.y = lerpf(avatar.position.y,0.0,blend)
+	avatar.position.y = lerpf(avatar.position.y,-0.22*crouch_blend,blend)
 
 func _clamp_anatomical_joints() -> void:
 	# The shin mesh extends down from its knee pivot. In this rig a
@@ -1122,7 +1147,7 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	crouch_blend = 0.0
 	capsule_shape.height = STANDING_HEIGHT_M
 	capsule_collider.position.y = STANDING_HEIGHT_M*0.5
-	avatar.scale = Vector3.ONE
+	upper_body_pivot.rotation = Vector3.ZERO # all rigid-body geometry stays original size
 	climbing = false
 	climb_contact_grace = 0.0
 	climb_input = Vector2.ZERO
