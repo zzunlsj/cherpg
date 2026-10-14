@@ -1,4 +1,4 @@
-name: CheRPG Windows EXE (0.0.21v)
+name: CheRPG Windows EXE (0.0.22v)
 
 on:
   pull_request:
@@ -69,8 +69,19 @@ jobs:
         run: |
           set -euo pipefail
           timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
-            --script res://tests/check_rigid_animation_geometry_0.0.21v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
+            --script res://tests/check_rigid_animation_geometry_0.0.22v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
           grep -F 'CHERPG_RIGID_ANIMATION_GEOMETRY_PASS' "$RUNNER_TEMP/geometry.log"
+
+      - name: Validate stair step and terrain contact source (under 1 second)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_stairs_contact_quick.py
+
+      - name: Short Godot physical 16cm stair and stance contacts test
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 28s godot --headless --path godot/tests/motion_rotation_lab \
+            --script res://tests/check_stairs_and_contacts_0.0.22v.gd 2>&1 | tee "$RUNNER_TEMP/steps.log"
+          grep -F 'CHERPG_STAIRS_AND_TERRAIN_CONTACTS_PASS' "$RUNNER_TEMP/steps.log"
 
       - name: Export one self-contained Windows x86_64 EXE
         shell: bash
@@ -79,9 +90,9 @@ jobs:
           PROJECT="$PWD/godot/tests/motion_rotation_lab"
           mkdir -p "$PROJECT/build"
           godot --headless --path "$PROJECT" --export-release \
-            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.21v.exe"
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.22v.exe"
 
-          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.21v.exe"
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.22v.exe"
           test -s "$EXE"
           python3 - "$EXE" <<'PY'
           from pathlib import Path
@@ -107,15 +118,15 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="godot/tests/motion_rotation_lab"
-          cp "$PROJECT/docs/WINDOWS_EXE_0.0.21v.md" \
-             "$PROJECT/build/README-WINDOWS-0.0.21v.md"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.22v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.22v.md"
 
       - name: Publish Windows test executable
         uses: actions/upload-artifact@v4
         with:
-          name: CheRPG-MotionLab-Windows-0.0.21v
+          name: CheRPG-MotionLab-Windows-0.0.22v
           path: |
-            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.21v.exe
-            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.21v.md
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.22v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.22v.md
           retention-days: 14
           if-no-files-found: error
