@@ -106,6 +106,15 @@ var mantle_stage := "NONE"
 var mantle_wall_normal := Vector3.BACK
 var ground_normal := Vector3.UP
 var step_up_count := 0
+const STEP_UP_DURATION_SEC := 0.19
+var step_active := false
+var step_clock := 0.0
+var step_start := Vector3.ZERO
+var step_raised := Vector3.ZERO
+var step_over := Vector3.ZERO
+var step_end := Vector3.ZERO
+var step_last_reason := "NONE"
+var step_probe_count := 0
 var foot_contacts: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
 var foot_contact_valid: Array[bool] = [false,false]
 var hand_contact_valid: Array[bool] = [false,false]
@@ -624,49 +633,98 @@ func _process(delta: float) -> void:
 	smoothed_input = move_toward(smoothed_input,target_y,delta * INPUT_SMOOTHING_PER_SEC)
 
 func _try_step_up(start_position: Vector3, desired_horizontal: Vector3, was_grounded: bool) -> bool:
-	# A vertical 16cm stair riser isn't a floor. Detect *blocked* planar travel,
-	# sweep a capsule up, across the landing, then sample the supporting top.
-	# Does not bypass 4m chess-cell voluntary movement restrictions.
-	if not was_grounded or climbing or mantle_active or desired_horizontal.length() < STEP_FORWARD_MIN_M:
+	# 16cm stair riser traversal is a 3-stage collision-swept motion.
+	# Elevated test probes beyond the stair nose to verify a *real platform*.
+	if not was_grounded or climbing or mantle_active or step_active \
+		or desired_horizontal.length() < STEP_FORWARD_MIN_M:
 		return false
-	var attempted: Vector3 = Vector3(desired_horizontal.x,0.0,desired_horizontal.z)
-	var actual: Vector3 = global_position - start_position
-	var advancement: float = Vector3(actual.x,0.0,actual.z).dot(attempted.normalized())
-	if advancement >= attempted.length() * 0.65:
-		return false # not obstructed; never auto-levitate on ordinary terrain
+	var horizontal := Vector3(desired_horizontal.x,0.0,desired_horizontal.z)
+	var actual: Vector3 = global_position-start_position
+	var forward: Vector3 = horizontal.normalized()
+	if Vector3(actual.x,0.0,actual.z).dot(forward) >= horizontal.length()*0.65:
+		return false
+	step_probe_count += 1
 	var raised := Transform3D(global_transform.basis,global_position)
 	if test_move(raised,Vector3.UP*MAX_STEP_HEIGHT_M):
-		return false # insufficient head/ceiling clearance
+		step_last_reason = "VERTICAL_SWEEP"
+		return false
 	raised.origin += Vector3.UP*MAX_STEP_HEIGHT_M
-	# Move the remaining full planned horizontal displacement at elevated height.
-	var remaining: Vector3 = attempted-Vector3(actual.x,0.0,actual.z)
-	if remaining.dot(attempted) <= 0.0 or test_move(raised,remaining):
+	# Pawn's collision radius stops its center ~0.235m before the riser.
+	# Advance beyond the nose by that distance or the support ray sees only
+	# the original floor and the Pawn can never reach the first tread.
+	var along: Vector3 = forward*(capsule_shape.radius+0.11)
+	var remaining: Vector3 = horizontal-Vector3(actual.x,0.0,actual.z)+along
+	if remaining.dot(forward) <= 0.0 or test_move(raised,remaining):
+		step_last_reason = "HORIZONTAL_SWEEP"
 		return false
-	var destination: Vector3 = raised.origin+remaining
-	var down_ray := PhysicsRayQueryParameters3D.create(
-		destination+Vector3.UP*0.08,destination+Vector3.DOWN*(MAX_STEP_HEIGHT_M+0.15),
-		1,[get_rid()])
-	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(down_ray)
+	var top_probe: Vector3 = raised.origin+remaining
+	var ray := PhysicsRayQueryParameters3D.create(
+		top_probe+Vector3.UP*0.12,
+		top_probe+Vector3.DOWN*(MAX_STEP_HEIGHT_M+0.24),1,[get_rid()])
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
 	if hit.is_empty():
+		step_last_reason = "NO_PLATFORM"
 		return false
-	var top: Vector3 = hit["position"]
-	var height_gain: float = top.y-start_position.y
-	if height_gain < 0.045 or height_gain > MAX_STEP_HEIGHT_M-0.015:
+	var platform: Vector3 = hit["position"]
+	var rise: float = platform.y-start_position.y
+	if rise < 0.045 or rise > MAX_STEP_HEIGHT_M-0.012 \
+		or hit["normal"].y < cos(floor_max_angle):
+		step_last_reason = "BAD_STEP_TOP"
 		return false
-	if hit["normal"].y < cos(floor_max_angle):
+	var destination := Vector3(top_probe.x,platform.y+0.012,top_probe.z)
+	if bool(_constrain_step(start_position,destination)["resisted"]):
+		step_last_reason = "BOARD_LIMIT"
 		return false
-	var landing := Vector3(destination.x,top.y+0.012,destination.z)
-	if bool(_constrain_step(start_position,landing)["resisted"]):
-		return false
-	# Upward and horizontal capsule sweeps both passed; the last tiny
-	# descent intentionally contacts the step platform, not its front wall.
-	global_position = landing
-	velocity.y = -0.4
-	apply_floor_snap()
-	step_up_count += 1
+	step_start = global_position
+	step_raised = global_position+Vector3.UP*MAX_STEP_HEIGHT_M
+	step_over = step_raised+remaining
+	step_end = destination
+	step_clock = 0.0
+	step_active = true
+	step_last_reason = "ACTIVE"
+	velocity = Vector3.ZERO
 	return true
 
+func _update_step_up(delta: float) -> void:
+	# Unlike teleport stepping, sweep each physics tick. If the ceiling or
+	# another obstacle unexpectedly blocks the trajectory, stop immediately.
+	var t: float = minf(1.0,(step_clock+delta)/STEP_UP_DURATION_SEC)
+	var goal := Vector3.ZERO
+	if t < 0.30:
+		goal = step_start.lerp(step_raised,smoothstep(0.0,0.30,t))
+	elif t < 0.78:
+		goal = step_raised.lerp(step_over,smoothstep(0.30,0.78,t))
+	else:
+		goal = step_over.lerp(step_end,smoothstep(0.78,1.0,t))
+	var motion: Vector3 = goal-global_position
+	if motion.length_squared() > 0.00000001:
+		var collision: KinematicCollision3D = move_and_collide(motion)
+		if collision != null and t < 0.78:
+			step_active = false
+			step_last_reason = "PATH_COLLISION"
+			velocity = Vector3.ZERO
+			return
+	step_clock = t*STEP_UP_DURATION_SEC
+	var planar_mps: float = WALK_MPS if not running else RUN_MPS
+	_update_gait(delta,planar_mps,running,1.0)
+	_apply_terrain_pose(delta)
+	_apply_surface_tilt(delta)
+	_clamp_anatomical_joints()
+	_prevent_part_penetration(delta)
+	current_cell = BOARD_RULES.cell_at(global_position,board_origin)
+	move_state = "STEP UP"
+	if t >= 1.0:
+		step_active = false
+		step_up_count += 1
+		step_last_reason = "LANDED"
+		velocity = Vector3(0.0,-0.4,0.0)
+		apply_floor_snap()
+
+
 func _physics_process(delta: float) -> void:
+	if step_active:
+		_update_step_up(delta)
+		return
 	if mantle_active:
 		_update_mantle(delta)
 		return
@@ -1311,6 +1369,10 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 		device.position.y = 0.0
 	climbing = false
 	step_up_count = 0
+	step_active = false
+	step_probe_count = 0
+	step_clock = 0.0
+	step_last_reason = "NONE"
 	foot_contact_valid = [false,false]
 	hand_contact_valid = [false,false]
 	climb_contact_grace = 0.0
