@@ -8,7 +8,7 @@ for token in (
     'func _try_step_up(',
     'test_move(raised,Vector3.UP*MAX_STEP_HEIGHT_M)',
     'test_move(raised,remaining)',
-    'if hit["normal"].y < cos(floor_max_angle):',
+    'hit["normal"].y < cos(floor_max_angle)',
     'apply_floor_snap()',
     '_try_step_up(starting_position,next_horizontal*delta,was_on_floor)',
     'func _solve_leg_foot(',
