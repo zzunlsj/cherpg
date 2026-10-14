@@ -82,7 +82,7 @@ func _run() -> void:
 		if not _assert_unchanged("crouch"):
 			quit(1)
 			return
-		pawn.attack_timer = pawn.ATTACK_POSE_SECONDS
+		pawn.attack_timer = 0.36
 		pawn._apply_attack_pose(delta)
 		if not _assert_unchanged("attack"):
 			quit(1)
