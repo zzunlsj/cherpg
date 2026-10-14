@@ -222,7 +222,7 @@ func _update_hud() -> void:
 		return
 	var station: String = str(terrain.call("station_name",active_station))
 	var rule_status: String = "RESISTANCE" if pawn.resistance_time > 0.0 else "CLEAR"
-	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.19v\n" \
+	info.text = "CheRPG | 100m x 100m / 4m GRID (25x25) | 0.0.22v\n" \
 		+ "STATION %d/10: %s | MOVE: %s | FLOOR: %.1f° (MAX: 90°)\n" % [active_station+1,station,pawn.move_state,pawn.floor_deg] \
 		+ "CAMERA: %.0f°/90° | ARM: %.2f/%.2fm (%s) | BODY YAW: %.0f° | CHESS HEADING: %s\n" % [rad_to_deg(camera_elevation),camera_actual_distance,camera_distance,("WALL" if camera_wall_blocked else "CLEAR"),rad_to_deg(pawn.avatar.rotation.y),pawn.HEADING_NAMES[pawn.heading_index]] \
 		+ "JUMP: %s | DEVICE: %s | %s\n" % [pawn.jump_state,pawn.device.call("phase_name"),pawn.device.reason] \
