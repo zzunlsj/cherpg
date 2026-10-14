@@ -1128,7 +1128,18 @@ func _part_penetrates_world_or_self(probe: Dictionary) -> bool:
 			# Foot and lower-leg ground contact is intentional. The ankle
 			# probe independently limits the amount of ground penetration.
 			if (name.ends_with("_Foot") or name.ends_with("_Shin")) and is_on_floor():
-				continue
+				# Allow real foot-to-floor contact, NEVER unlimited penetration.
+				# Compute the oriented proxy's world bottom (OBB support point).
+				var box: BoxShape3D = probe["shape"]
+				var basis: Basis = area.global_basis
+				var half: Vector3 = box.size*0.5
+				var lowest: float = area.global_position.y 					-absf(basis.x.y)*half.x-absf(basis.y.y)*half.y 					-absf(basis.z.y)*half.z
+				var under := PhysicsRayQueryParameters3D.create(
+					area.global_position+Vector3.UP*0.58,
+					area.global_position+Vector3.DOWN*0.85,1,[get_rid()])
+				var support: Dictionary = get_world_3d().direct_space_state.intersect_ray(under)
+				if not support.is_empty() and support["normal"].y > 0.53 					and lowest >= support["position"].y-0.017:
+					continue
 			return true
 	return false
 
