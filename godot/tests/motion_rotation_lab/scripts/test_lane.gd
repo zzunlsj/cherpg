@@ -11,7 +11,7 @@ const RAMP_ANGLES := [8.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0]
 const RAMP_X := [-38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0]
 const RAMP_Z := 19.0
 const SPAWN_X := [0.0, -38.0, -26.0, -14.0, -2.0, 10.0, 22.0, 38.0, -22.0, 20.0]
-const SPAWN_Z := [38.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, -18.0, -18.0]
+const SPAWN_Z := [38.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, -18.0, -13.6]
 const GROUND_TOP_Y := 0.0
 var grid_material: ShaderMaterial
 var all_grid_materials: Array[ShaderMaterial] = []
@@ -220,7 +220,7 @@ func _create_stairs() -> void:
 		var col := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
 		shape.size = mesh.size
-		col.name = "StepCollision_%02d" % i
+		col.name = "StepCollision_%02d" % i # 0.16m risers; step-up solver handles vertical edges
 		col.position = obj.position
 		col.shape = shape
 		add_child(col)
