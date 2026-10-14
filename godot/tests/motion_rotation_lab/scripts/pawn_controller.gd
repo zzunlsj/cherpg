@@ -456,6 +456,7 @@ func _update_mantle(delta: float) -> void:
 	_update_mantle_pose(t,delta)
 	_clamp_anatomical_joints()
 	_apply_terrain_pose(delta)
+	_sync_device_to_rigid_waist(delta)
 	_prevent_part_penetration(delta)
 	current_cell = BOARD_RULES.cell_at(global_position,board_origin)
 	move_state = "MANTLE "+mantle_stage
@@ -756,6 +757,7 @@ func _physics_process(delta: float) -> void:
 	# Crouch by bending a real spine hinge, never by squashing the Pawn.
 	upper_body_pivot.rotation.x = lerpf(upper_body_pivot.rotation.x,
 		-0.94*crouch_blend, minf(1.0,delta*12.0))
+	_sync_device_to_rigid_waist(delta)
 	_apply_terrain_pose(delta)
 	_apply_surface_tilt(delta)
 	_prevent_part_penetration(delta)
@@ -935,6 +937,15 @@ func _update_crouch_pose(delta: float, horizontal_speed: float, axis: float) -> 
 	avatar.rotation.z = lerpf(avatar.rotation.z,0.01*sin(gait_clock)*crawl_activity,blend)
 	avatar.position.y = lerpf(avatar.position.y,-0.22*crouch_blend,blend)
 
+func _sync_device_to_rigid_waist(delta: float) -> void:
+	# While stored, the waist apparatus follows the pelvis translation.
+	# It must not inherit squash/stretch transforms from the character.
+	# While anchored, keep it at its installed world-ground reference.
+	if device == null:
+		return
+	var desired: float = avatar.position.y if device.call("phase_name") == "STOWED" else 0.0
+	device.position.y = lerpf(device.position.y,desired,minf(1.0,delta*12.0))
+
 func _clamp_anatomical_joints() -> void:
 	# The shin mesh extends down from its knee pivot. In this rig a
 	# NEGATIVE X knee rotation means bending BACK, toward the heel.
@@ -948,6 +959,7 @@ func _clamp_anatomical_joints() -> void:
 		elbow[i].rotation.x = clampf(elbow[i].rotation.x,0.0,1.95)
 	avatar.rotation.x = clampf(avatar.rotation.x,-0.38,0.18)
 	avatar.rotation.z = clampf(avatar.rotation.z,-0.10,0.10)
+	upper_body_pivot.rotation.x = clampf(upper_body_pivot.rotation.x,-1.05,0.25)
 
 
 func _moving_joints() -> Array[Node3D]:
@@ -957,6 +969,7 @@ func _moving_joints() -> Array[Node3D]:
 	joints.append_array(feet)
 	joints.append_array(shoulder)
 	joints.append_array(elbow)
+	joints.append(upper_body_pivot)
 	return joints
 
 func _record_safe_joint_pose() -> void:
@@ -1148,6 +1161,8 @@ func reset_at(world_x: float, base_y: float, world_z: float, index: int) -> void
 	capsule_shape.height = STANDING_HEIGHT_M
 	capsule_collider.position.y = STANDING_HEIGHT_M*0.5
 	upper_body_pivot.rotation = Vector3.ZERO # all rigid-body geometry stays original size
+	if device != null:
+		device.position.y = 0.0
 	climbing = false
 	climb_contact_grace = 0.0
 	climb_input = Vector2.ZERO
