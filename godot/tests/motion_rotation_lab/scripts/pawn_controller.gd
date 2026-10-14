@@ -103,6 +103,7 @@ var mantle_over := Vector3.ZERO
 var mantle_finish := Vector3.ZERO
 var mantle_blocked_seconds := 0.0
 var mantle_stage := "NONE"
+var mantle_wall_normal := Vector3.BACK
 var ground_normal := Vector3.UP
 var step_up_count := 0
 var foot_contacts: Array[Vector3] = [Vector3.ZERO,Vector3.ZERO]
@@ -397,6 +398,7 @@ func _begin_mantle(target: Vector3) -> void:
 	mantle_clock = 0.0
 	mantle_blocked_seconds = 0.0
 	mantle_start = global_position
+	mantle_wall_normal = climb_normal
 	mantle_finish = target
 	mantle_up = Vector3(mantle_start.x, target.y + 0.30, mantle_start.z)
 	mantle_over = Vector3(target.x, target.y + 0.30, target.z)
@@ -469,6 +471,8 @@ func _update_mantle(delta: float) -> void:
 	_clamp_anatomical_joints()
 	_apply_terrain_pose(delta)
 	_sync_device_to_rigid_waist(delta)
+	_apply_wall_contacts(delta)
+	_clamp_anatomical_joints()
 	_prevent_part_penetration(delta)
 	current_cell = BOARD_RULES.cell_at(global_position,board_origin)
 	move_state = "MANTLE "+mantle_stage
@@ -819,6 +823,8 @@ func _physics_process(delta: float) -> void:
 	_sync_device_to_rigid_waist(delta)
 	_apply_terrain_pose(delta)
 	_apply_surface_tilt(delta)
+	_apply_wall_contacts(delta)
+	_clamp_anatomical_joints()
 	_prevent_part_penetration(delta)
 	landing_visual = maxf(0.0,landing_visual-delta*6.0)
 	takeoff_visual = maxf(0.0,takeoff_visual-delta*9.0)
@@ -1150,33 +1156,103 @@ func _prevent_part_penetration(delta: float) -> void:
 	for i in range(joints.size()):
 		joints[i].rotation = safe_joint_pose[i]
 
+func _solve_leg_foot(index: int, contact: Vector3, delta: float, snap: bool) -> bool:
+	# Two-bone inverse kinematics; the geometry is never scaled.
+	var hip: Node3D = upper_leg[index]
+	var ankle: Vector3 = contact + Vector3.UP * 0.104 + avatar.global_basis.z.normalized()*0.05
+	var delta_local: Vector3 = hip.get_parent().to_local(ankle)-hip.position
+	var thigh_length := 0.242
+	var shin_length := 0.325
+	var distance: float = Vector2(delta_local.y,delta_local.z).length()
+	if distance < 0.06 or distance > thigh_length+shin_length+0.028:
+		return false
+	distance = clampf(distance,0.07,thigh_length+shin_length-0.0005)
+	var cosine := clampf((distance*distance-thigh_length*thigh_length-shin_length*shin_length)
+		/(2.0*thigh_length*shin_length),-1.0,1.0)
+	var flex: float = minf(MAX_KNEE_FLEX_RAD,acos(cosine))
+	var pitch: float = atan2(-delta_local.z,-delta_local.y)
+	var hip_pitch: float = pitch+atan2(shin_length*sin(flex),thigh_length+shin_length*cos(flex))
+	var fraction: float = 1.0 if snap else minf(1.0,delta*17.0)
+	hip.rotation.x = lerpf(hip.rotation.x,clampf(hip_pitch,-0.85,0.85),fraction)
+	knee[index].rotation.x = lerpf(knee[index].rotation.x,-flex,fraction)
+	return true
+
 func _apply_terrain_pose(delta: float) -> void:
-	# Probe both feet independently, including beneath slopes and stairs.
-	# The physics capsule remains authoritative for whole-body movement.
+	# Plant stance feet on measured terrain, lift only swing feet that would
+	# clip a tread. Preserve the exact length of thigh, shin and rigid shoe.
+	foot_contact_valid = [false,false]
 	if mantle_active or climbing or not is_on_floor():
 		return
-	var space := get_world_3d().direct_space_state
-	var lift_required := 0.0
-	for i in range(feet.size()):
-		var sole: Vector3 = feet[i].to_global(Vector3(0,-.098,-.050))
-		var query := PhysicsRayQueryParameters3D.create(sole+Vector3.UP*.46,sole+Vector3.DOWN*.75,1,[get_rid()])
-		var contact: Dictionary = space.intersect_ray(query)
-		if contact.is_empty():
+	var walking: bool = _horizontal_velocity().length() > 0.10
+	var cycle := fposmod(gait_clock/TAU,1.0)
+	for i in range(2):
+		var sole: Vector3 = feet[i].to_global(Vector3(0,-0.098,-0.050))
+		var query := PhysicsRayQueryParameters3D.create(
+			sole+Vector3.UP*0.75,sole+Vector3.DOWN*1.05,1,[get_rid()])
+		var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty() or hit["normal"].y < 0.53:
 			continue
-		var n: Vector3 = contact["normal"]
-		if n.y < .25:
+		var ground: Vector3 = hit["position"]
+		var penetration: float = ground.y-sole.y
+		var step_phase: float = fposmod(cycle+(0.0 if i==0 else 0.5),1.0)
+		var supporting: bool = not walking or crouching or step_phase < 0.60
+		if not supporting and penetration <= 0.005:
 			continue
-		var difference: float = contact["position"].y - sole.y
-		# Swing foot may be raised by the animation; do not pull it down.
-		if difference > .008:
-			lift_required = maxf(lift_required,minf(difference,.072))
-			knee[i].rotation.x = maxf(-MAX_KNEE_FLEX_RAD,knee[i].rotation.x-minf(difference*.80,.14))
-		var local_normal: Vector3 = avatar.global_transform.basis.inverse()*n
-		var ground_pitch: float = clampf(-atan2(local_normal.z,maxf(.2,local_normal.y)),-.34,.34)
-		feet[i].rotation.x = lerpf(feet[i].rotation.x,clampf(ground_pitch-feet[i].get_parent().rotation.x*.12,-.5,.48),minf(1.0,delta*9.0))
-	if lift_required > .0:
-		# Lift visual rig only; never teleport the physics root through solids.
-		avatar.position.y += minf(.055,lift_required)*minf(1.0,delta*16.0)
+		if _solve_leg_foot(i,ground,delta,penetration > 0.005):
+			foot_contact_valid[i] = true
+			foot_contacts[i] = ground
+			var local_normal: Vector3 = avatar.global_basis.inverse()*hit["normal"]
+			var ground_pitch := clampf(-atan2(local_normal.z,maxf(0.4,local_normal.y)),-0.35,0.35)
+			feet[i].rotation.x = lerpf(feet[i].rotation.x,ground_pitch,minf(1.0,delta*17.0))
+		elif penetration > 0.02:
+			# An unreachable foothold must not push a rigid leg through a step.
+			avatar.position.y = minf(0.07,avatar.position.y+minf(0.02,penetration))
+
+func _solve_arm_grip(index: int, target: Vector3, delta: float) -> bool:
+	var pivot: Node3D = shoulder[index]
+	var relative: Vector3 = pivot.get_parent().to_local(target)-pivot.position
+	var upper_len := 0.245
+	var lower_len := 0.32
+	var r: float = Vector2(relative.z,relative.y).length()
+	if r < 0.07 or r > upper_len+lower_len+0.02:
+		return false
+	r = clampf(r,0.07,upper_len+lower_len-0.001)
+	var hinge: float = clampf(acos(clampf((r*r-upper_len*upper_len-lower_len*lower_len)
+		/(2.0*upper_len*lower_len),-1.0,1.0)),0.0,1.95)
+	var angle: float = atan2(-relative.z,-relative.y)-atan2(
+		lower_len*sin(hinge),upper_len+lower_len*cos(hinge))
+	var t: float = minf(1.0,delta*20.0)
+	shoulder[index].rotation.x = lerpf(shoulder[index].rotation.x,clampf(angle,-1.6,1.2),t)
+	elbow[index].rotation.x = lerpf(elbow[index].rotation.x,hinge,t)
+	return true
+
+func _apply_wall_contacts(delta: float) -> void:
+	hand_contact_valid = [false,false]
+	if not climbing and not mantle_active:
+		return
+	var wall_normal: Vector3 = climb_normal if climbing else mantle_wall_normal
+	var wall_right: Vector3 = Vector3.UP.cross(wall_normal).normalized()
+	for i in range(2):
+		var grip := Vector3.ZERO
+		var found := false
+		if mantle_active:
+			var side := -0.16 if i==0 else 0.16
+			grip = Vector3(mantle_start.x,mantle_finish.y+0.04,mantle_start.z) \
+				-wall_normal*0.25+wall_right*side
+			found = mantle_clock < MANTLE_TIME*0.82
+		else:
+			var source: Vector3 = shoulder[i].global_position+Vector3.DOWN*0.22
+			var ray := PhysicsRayQueryParameters3D.create(
+				source+wall_normal*0.22,source-wall_normal*0.85,1,[get_rid()])
+			var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(ray)
+			if not hit.is_empty():
+				var body: CollisionObject3D = hit["collider"] as CollisionObject3D
+				if body != null and body.is_in_group("cherpg_grabbable"):
+					grip = hit["position"]+wall_normal*0.042
+					found = true
+		if found and _solve_arm_grip(i,grip,delta):
+			hand_contact_valid[i] = true
+			hand_contacts[i] = grip
 
 func _apply_surface_tilt(delta: float) -> void:
 	# All grounded animation states share the current terrain normal.
