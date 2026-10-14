@@ -26,6 +26,9 @@ var pawn
 var components: Array[Dictionary] = []
 var contact_cache: Array[Dictionary] = []
 var opening_ring: MeshInstance3D
+var stowed_ring: MeshInstance3D
+var rigid_open_material: StandardMaterial3D
+var rigid_closed_material: StandardMaterial3D
 var heading_pivot: Node3D
 var preview_root: Node3D
 var tile_outline_root: Node3D
@@ -41,18 +44,28 @@ func bind_pawn(character: CharacterBody3D) -> void:
 	silver = _mat(Color("738188"),0.48)
 	accent = _mat(Color("2b9aab"),0.25)
 	_make_torus("PermanentWaistBelt",0.206,0.023,dark)
-	opening_ring = _make_torus("ExpandingRing",OPEN_RADIUS,0.024,dark)
+	# The two rings are rigid, constant-radius objects. Crossfade assembly
+	# states instead of distorting a torus with animated scale.
+	rigid_closed_material = _mat(Color("38434a"),0.62)
+	rigid_open_material = _mat(Color("38434a"),0.62)
+	rigid_closed_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rigid_open_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	stowed_ring = _make_torus("CollapsedRigidWaistRing",CLOSED_RADIUS,0.024,rigid_closed_material)
+	opening_ring = _make_torus("DeployedRigidWaistRing",OPEN_RADIUS,0.024,rigid_open_material)
 	_make_box(self,"FrontBuckle",Vector3(0,WAIST_Y,-0.207),Vector3(0.085,0.055,0.039),silver)
 	for i in range(4):
 		var angle: float = deg_to_rad(ANCHOR_ANGLES[i])
 		var rail := _make_box(self,"ACTUATOR_%d"%(i+1),Vector3.ZERO,Vector3(.455,.046,.046),silver)
 		var joint := _make_cylinder("JOINT_%d"%(i+1),0.040,0.06,dark)
-		var upper := _make_cylinder("ANCHOR_UPPER_%d"%(i+1),0.025,1.0,silver)
-		var lower := _make_cylinder("ANCHOR_LOWER_%d"%(i+1),0.018,1.0,silver)
+		# Rigid telescoping pieces: extension is measured by their overlap
+		# and translation, NEVER by lengthwise scaling.
+		var upper := _make_cylinder("ANCHOR_UPPER_%d"%(i+1),0.025,0.316,silver)
+		var lower := _make_cylinder("ANCHOR_LOWER_%d"%(i+1),0.018,0.31,silver)
+		var tip := _make_cylinder("ANCHOR_SLIDING_TIP_%d"%(i+1),0.014,0.28,silver)
 		var collar := _make_cylinder("ANCHOR_COLLAR_%d"%(i+1),0.035,0.069,dark)
 		var shoe := _make_cylinder("ANCHOR_FOOT_%d"%(i+1),FOOT_RADIUS,FOOT_THICKNESS,dark)
 		components.append({"angle":angle,"rail":rail,"joint":joint,"upper":upper,
-			"lower":lower,"collar":collar,"shoe":shoe})
+			"lower":lower,"tip":tip,"collar":collar,"shoe":shoe})
 	heading_pivot = Node3D.new()
 	heading_pivot.name = "ChessHeadingMarker_NoBodyYaw"
 	add_child(heading_pivot)
@@ -322,45 +335,67 @@ func _probe_all_feet() -> Dictionary:
 			"normal":normal,"stroke":length,"correction":highest_correction})
 	return {"ok":true,"reason":"ALL FOUR FEET SUPPORTED","contacts":contacts}
 
-func _apply_pose(ring_frac: float,anchor_frac: float) -> void:
+func _apply_pose(ring_frac: float, anchor_frac: float) -> void:
 	if opening_ring == null:
 		return
-	var r := lerpf(CLOSED_RADIUS,OPEN_RADIUS,ring_frac)
-	opening_ring.scale = Vector3(r/OPEN_RADIUS,r/OPEN_RADIUS,r/OPEN_RADIUS)
+	# NO runtime scale anywhere: ring sizes and rod lengths are immutable.
+	# Small waist ring fades out as the larger rigid assembly fades in.
+	var closed_alpha: float = 1.0-smoothstep(0.13,0.72,ring_frac)
+	var open_alpha: float = smoothstep(0.30,0.96,ring_frac)
+	var closed_color: Color = rigid_closed_material.albedo_color
+	closed_color.a = closed_alpha
+	rigid_closed_material.albedo_color = closed_color
+	var open_color: Color = rigid_open_material.albedo_color
+	open_color.a = open_alpha
+	rigid_open_material.albedo_color = open_color
+	stowed_ring.visible = closed_alpha > 0.01
+	opening_ring.visible = open_alpha > 0.01
+	heading_pivot.visible = ring_frac > 0.35
 	heading_pivot.rotation.y = heading_visual
-	heading_pivot.scale = Vector3.ONE * (r/OPEN_RADIUS)
 	for i in range(4):
 		var row: Dictionary = components[i]
 		var a: float = row["angle"]
 		var dx: float = cos(a)
 		var dz: float = -sin(a)
-		var rail_length := lerpf(0.045,0.455,ring_frac)
-		var distance := lerpf(0.225,OPEN_RADIUS,ring_frac)
-		var radial_center := lerpf(.213,.45,ring_frac)
+		var distance: float = lerpf(0.225,OPEN_RADIUS,ring_frac)
+		var radial_center: float = lerpf(.213,.45,ring_frac)
 		var rail: MeshInstance3D = row["rail"]
+		# Every box's original mesh dimensions are held constant.
 		rail.position = Vector3(radial_center*dx,WAIST_Y,radial_center*dz)
 		rail.rotation.y = a
-		rail.scale = Vector3(rail_length/.455,1,1)
+		rail.visible = ring_frac > .10
 		var hinge: MeshInstance3D = row["joint"]
 		hinge.position = Vector3(distance*dx,WAIST_Y,distance*dz)
+		hinge.visible = ring_frac > .10
 		var upper: MeshInstance3D = row["upper"]
 		var lower: MeshInstance3D = row["lower"]
+		var tip: MeshInstance3D = row["tip"]
 		var collar: MeshInstance3D = row["collar"]
 		var shoe: MeshInstance3D = row["shoe"]
-		var ground_center_y := 0.055
+		var ground_center_y: float = 0.055
 		var ground_normal := Vector3.UP
 		if contact_cache.size() == 4:
 			ground_center_y = float(contact_cache[i]["center_y"])
 			ground_normal = contact_cache[i]["normal"]
-		var top_end := WAIST_Y-0.012
-		upper.position = Vector3(distance*dx,lerpf(WAIST_Y-.02,(top_end+COLLAR_Y)*.5,anchor_frac),distance*dz)
-		upper.scale = Vector3(1,lerpf(.045,top_end-COLLAR_Y,anchor_frac),1)
-		collar.position = Vector3(distance*dx,lerpf(WAIST_Y-.055,COLLAR_Y,anchor_frac),distance*dz)
-		collar.scale = Vector3(1,lerpf(.35,1,anchor_frac),1)
-		var bottom_top := ground_center_y+FOOT_THICKNESS*.5
-		var bar_end := lerpf(WAIST_Y-.07,bottom_top,anchor_frac)
-		lower.position = Vector3(distance*dx,lerpf(WAIST_Y-.07,(COLLAR_Y+bottom_top)*.5,anchor_frac),distance*dz)
-		lower.scale = Vector3(1,lerpf(.045,maxf(.01,COLLAR_Y-bar_end),anchor_frac),1)
-		shoe.position = Vector3(distance*dx,lerpf(WAIST_Y-.1,ground_center_y,anchor_frac),distance*dz)
-		shoe.scale = Vector3(1,lerpf(.05,1.0,anchor_frac),1)
-		shoe.quaternion = Quaternion.IDENTITY.slerp(Quaternion(Vector3.UP,ground_normal),anchor_frac)
+		var top_end: float = WAIST_Y-0.012
+		var bottom_top: float = ground_center_y+FOOT_THICKNESS*.5
+		# Fixed-length sections slide over one another. At full extension,
+		# upper spans top_end→COLLAR_Y, lower spans collar→0.11m, and the
+		# tip reaches the actual floor. Varying stroke alters only overlap.
+		upper.position = Vector3(distance*dx,
+			lerpf(WAIST_Y-.02,(top_end+COLLAR_Y)*.5,anchor_frac),distance*dz)
+		lower.position = Vector3(distance*dx,
+			lerpf(WAIST_Y-.07,COLLAR_Y-.155,anchor_frac),distance*dz)
+		tip.position = Vector3(distance*dx,
+			lerpf(WAIST_Y-.10,bottom_top+.14,anchor_frac),distance*dz)
+		collar.position = Vector3(distance*dx,
+			lerpf(WAIST_Y-.055,COLLAR_Y,anchor_frac),distance*dz)
+		shoe.position = Vector3(distance*dx,
+			lerpf(WAIST_Y-.1,ground_center_y,anchor_frac),distance*dz)
+		upper.visible = anchor_frac > 0.10
+		lower.visible = anchor_frac > 0.10
+		tip.visible = anchor_frac > 0.15
+		collar.visible = anchor_frac > 0.10
+		shoe.visible = anchor_frac > 0.13
+		shoe.quaternion = Quaternion.IDENTITY.slerp(
+			Quaternion(Vector3.UP,ground_normal),anchor_frac)
