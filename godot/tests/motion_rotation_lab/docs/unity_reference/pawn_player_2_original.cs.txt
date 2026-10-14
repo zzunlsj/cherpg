@@ -1,0 +1,111 @@
+using System;
+using Unity.VisualScripting;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.InputSystem;
+
+public class pawn_player : MonoBehaviour
+{
+    public Vector2 inputVec;
+    public Vector2 fixedInputVec;
+    public Vector2 force;
+
+    public float maxSpeed = 4.0f;
+    public float sprintSpeedScaile = 1.5f;
+    public float minSpeed = 0.1f;
+    public bool isSprint = false;
+
+    public float maxForce = 20000.0f;
+    public float sprintForceScaile = 2.0f;
+    public float minForce = 0.1f;
+    
+    public float maxStopFriction = 0.5f;
+    public float moveFriction = 0.3f;
+
+    Rigidbody2D rigid;
+    SpriteRenderer spriter;
+    Animator anim;
+
+    void Start()
+    {
+        rigid = GetComponent<Rigidbody2D>();
+        spriter = GetComponent<SpriteRenderer>();
+        anim = GetComponent<Animator>();
+    }
+
+    void Update()
+    {
+        if (Keyboard.current != null)
+        {
+            float h = 0;
+            float v = 0;
+
+            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) h += -1f;
+            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) h += 1f;
+            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) v += -1f;
+            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) v += 1f;
+
+            inputVec.x = Mathf.MoveTowards(inputVec.x, h, Time.deltaTime * 10f);
+            inputVec.y = Mathf.MoveTowards(inputVec.y, v, Time.deltaTime * 10f);
+
+            isSprint = Keyboard.current.leftShiftKey.isPressed;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        fixedInputVec = Vector2.ClampMagnitude(inputVec, 1f) + new Vector2(0,0);
+        if(rigid.linearVelocity.magnitude <= minSpeed)
+        {
+            force = fixedInputVec.normalized * Math.Max(fixedInputVec.magnitude * maxForce - rigid.mass * rigid.gravityScale * maxStopFriction, 0.0f);
+            if(fixedInputVec.magnitude < minForce)
+            {
+                force = new Vector2(0.0f, 0.0f);
+            }
+        }
+        else
+        {
+            force = fixedInputVec.normalized * fixedInputVec.magnitude * maxForce - rigid.linearVelocity.normalized * rigid.mass * rigid.gravityScale * moveFriction;
+            if(fixedInputVec.magnitude < minForce)
+            {
+                force = force - rigid.linearVelocity.normalized * maxForce;
+            }
+        }
+
+        if(force.magnitude < minForce)
+        {
+            force = new Vector2(0,0);
+            rigid.linearVelocity = new Vector2(0,0);
+        }
+        else if(isSprint)
+        {
+            force = force * sprintForceScaile;
+        }
+        
+        if(force.magnitude >= minForce)
+        {
+            rigid.AddForce(force * Time.fixedDeltaTime);
+        }
+        
+        if(isSprint && rigid.linearVelocity.magnitude > maxSpeed * sprintSpeedScaile)
+        {
+            rigid.linearVelocity = rigid.linearVelocity.normalized * maxSpeed * sprintSpeedScaile;
+        }
+        else if(!isSprint && rigid.linearVelocity.magnitude > maxSpeed)
+        {
+            rigid.linearVelocity = rigid.linearVelocity.normalized * maxSpeed;
+        }
+    }
+
+    void LateUpdate()
+    {
+        if(Input.GetMouseButtonDown(0))
+        {
+            anim.ResetTrigger("attack");
+            anim.SetTrigger("attack");
+        }
+        anim.SetFloat("speed", rigid.linearVelocity.magnitude);
+        
+    }
+}

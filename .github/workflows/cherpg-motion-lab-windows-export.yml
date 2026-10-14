@@ -1,0 +1,132 @@
+name: CheRPG Windows EXE (0.0.22v)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/cherpg-motion-lab-windows-export.yml"
+      - "godot/tests/motion_rotation_lab/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout standalone Godot laboratory
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.7.2 plus official export templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: "4.7.2"
+          use-dotnet: false
+          include-templates: true
+
+      - name: Under-one-second source consistency check
+        run: python3 godot/tests/motion_rotation_lab/tests/test_100m_field_source_quick.py
+
+      - name: Verify camera 90-degree behavior in source (no playtest)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_camera_90deg_quick.py
+
+      - name: Verify mantle stages and all-part collision envelopes (static only)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_mantle_part_rig_quick.py
+
+      - name: Verify camera-invariant climbing coordinates and Ctrl hold (short static check)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_wall_tangent_controls_quick.py
+
+      - name: Verify follow-camera wall sweeps and 6.8m orbit (static only)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_camera_wall_collision_quick.py
+
+      - name: Check uploaded Unity pawn_player(2).cs force-port formulas (fast static)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_unity_pawn_player2_port_quick.py
+
+      - name: Import resources (build preparation only — no play testing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 55s godot --headless --editor --import \
+            --path godot/tests/motion_rotation_lab --quit
+
+      - name: Short Godot startup/parser sanity check (not a gameplay test)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
+            --quit-after 3 2>&1 | tee "$RUNNER_TEMP/boot.log"
+          if grep -E 'SCRIPT ERROR|Parse Error:|Parser Error:|Failed to load script|ERROR: Shader' "$RUNNER_TEMP/boot.log"; then
+            exit 1
+          fi
+
+      - name: Reject runtime model or device mesh scaling in animations
+        run: python3 godot/tests/motion_rotation_lab/tests/test_rigid_animation_source_quick.py
+
+      - name: Short Godot rigid animation geometry check (not long gameplay)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
+            --script res://tests/check_rigid_animation_geometry_0.0.21v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
+          grep -F 'CHERPG_RIGID_ANIMATION_GEOMETRY_PASS' "$RUNNER_TEMP/geometry.log"
+
+      - name: Validate stair step and terrain contact source (under 1 second)
+        run: python3 godot/tests/motion_rotation_lab/tests/test_stairs_contact_quick.py
+
+      - name: Short Godot physical 16cm stair and stance contacts test
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 28s godot --headless --path godot/tests/motion_rotation_lab \
+            --script res://tests/check_stairs_and_contacts_0.0.22v.gd 2>&1 | tee "$RUNNER_TEMP/steps.log"
+          grep -F 'CHERPG_STAIRS_AND_TERRAIN_CONTACTS_PASS' "$RUNNER_TEMP/steps.log"
+
+      - name: Export one self-contained Windows x86_64 EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="$PWD/godot/tests/motion_rotation_lab"
+          mkdir -p "$PROJECT/build"
+          godot --headless --path "$PROJECT" --export-release \
+            "Windows Desktop" "$PROJECT/build/CheRPG-MotionLab-0.0.22v.exe"
+
+          EXE="$PROJECT/build/CheRPG-MotionLab-0.0.22v.exe"
+          test -s "$EXE"
+          python3 - "$EXE" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          with p.open('rb') as f: magic=f.read(2)
+          assert magic == b'MZ', "Output is not a Windows Portable Executable"
+          assert p.stat().st_size > 1000000, "Exported EXE unexpectedly small"
+          pcks=list(p.parent.glob('*.pck'))
+          assert not pcks, f"Expected embedded PCK, got external resources: {pcks}"
+          payload=p.read_bytes()
+          company_key="CompanyName".encode("utf-16le")
+          company_value="CheRPG".encode("utf-16le")
+          loc=payload.find(company_key)
+          assert loc >= 0, "PE VERSIONINFO CompanyName resource is missing"
+          assert company_value in payload[loc:loc+100], "PE publisher/company resource is not CheRPG"
+          print("CHERPG_WINDOWS_COMPANY_METADATA_VERIFIED CheRPG")
+          print(f"CHERPG_WINDOWS_EXE_EXPORT_OK {p.stat().st_size} bytes")
+          PY
+          
+      - name: Bundle instructions with EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="godot/tests/motion_rotation_lab"
+          cp "$PROJECT/docs/WINDOWS_EXE_0.0.22v.md" \
+             "$PROJECT/build/README-WINDOWS-0.0.22v.md"
+
+      - name: Publish Windows test executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: CheRPG-MotionLab-Windows-0.0.22v
+          path: |
+            godot/tests/motion_rotation_lab/build/CheRPG-MotionLab-0.0.22v.exe
+            godot/tests/motion_rotation_lab/build/README-WINDOWS-0.0.22v.md
+          retention-days: 14
+          if-no-files-found: error

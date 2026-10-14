@@ -1,0 +1,9 @@
+63f7b34db8d8cdea90c76aacccf841ec
+::res://::1791867768
+::res://scenes/::1791867765
+MotionLab.tscn::PackedScene::-1::1791865587::0::1::::<><><>0<>0<><>::res://scripts/motion_lab.gd
+::res://scripts/::1791867765
+direction_device.gd::GDScript::4719958667467804573::1791867765::0::1::::<>Node3D<><>0<>0<><>::
+motion_lab.gd::GDScript::3254115756913019573::1791867765::0::1::::<>Node3D<><>0<>0<><>::
+pawn_controller.gd::GDScript::6628779746281382975::1791866695::0::1::::<>CharacterBody3D<><>0<>0<><>::
+test_lane.gd::GDScript::6596323905863287197::1791867765::0::1::::<>StaticBody3D<><>0<>0<><>::
