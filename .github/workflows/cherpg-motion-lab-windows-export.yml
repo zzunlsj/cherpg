@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           timeout 18s godot --headless --path godot/tests/motion_rotation_lab \
-            --script res://tests/check_rigid_animation_geometry_0.0.22v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
+            --script res://tests/check_rigid_animation_geometry_0.0.21v.gd 2>&1 | tee "$RUNNER_TEMP/geometry.log"
           grep -F 'CHERPG_RIGID_ANIMATION_GEOMETRY_PASS' "$RUNNER_TEMP/geometry.log"
 
       - name: Validate stair step and terrain contact source (under 1 second)
